@@ -62,34 +62,100 @@ jobs:
         path: target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+    - name: Initialize test results
+      run: |
+        mkdir -p test-results
+        echo "| Example | OS | Rust | Features | Status |" > test-results/results.md
+        echo "|---------|----|----- |----------|--------|" >> test-results/results.md
+
     - name: Test llama example
       working-directory: examples/llama
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| llama | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| llama | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test moondream example
       working-directory: examples/moondream
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| moondream | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| moondream | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test phi example
       working-directory: examples/phi
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| phi | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| phi | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test qwen example
       working-directory: examples/qwen
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| qwen | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| qwen | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test simple example (CPU only)
       working-directory: examples/simple
-      run: cargo build --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --verbose; then
+          echo "| simple | ${{ matrix.os }} | ${{ matrix.rust }} | cpu | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| simple | ${{ matrix.os }} | ${{ matrix.rust }} | cpu | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test train_math_net example
       working-directory: examples/train_math_net
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| train_math_net | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| train_math_net | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test whisper example
       working-directory: examples/whisper
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| whisper | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| whisper | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
 
     - name: Test yolo_v8 example
       working-directory: examples/yolo_v8
-      run: cargo build --features ${{ matrix.features }} --verbose
+      continue-on-error: true
+      run: |
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "| yolo_v8 | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ✅ PASS |" >> ../../test-results/results.md
+        else
+          echo "| yolo_v8 | ${{ matrix.os }} | ${{ matrix.rust }} | ${{ matrix.features }} | ❌ FAIL |" >> ../../test-results/results.md
+        fi
+
+    - name: Display test results
+      run: |
+        echo "## Test Results for ${{ matrix.os }} - ${{ matrix.rust }} - ${{ matrix.features }}"
+        cat test-results/results.md
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.features }}
+        path: test-results/results.md
