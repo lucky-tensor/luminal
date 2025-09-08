@@ -211,3 +211,45 @@ jobs:
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.features }}
         path: test-results/results.json
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: test-examples
+    if: always()
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create consolidated summary
+      run: |
+        echo "# 📊 Example Build Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
+        echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+        
+        # Process all result files
+        for result_file in artifacts/*/results.json; do
+          if [ -f "$result_file" ]; then
+            os=$(jq -r '.matrix.os' "$result_file" | sed 's/ubuntu-latest/Ubuntu/' | sed 's/macos-latest/macOS/')
+            rust=$(jq -r '.matrix.rust' "$result_file")
+            features=$(jq -r '.matrix.features' "$result_file")
+            
+            # Extract status for each example
+            llama=$(jq -r '.results[] | select(.example=="llama") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            moondream=$(jq -r '.results[] | select(.example=="moondream") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            phi=$(jq -r '.results[] | select(.example=="phi") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            qwen=$(jq -r '.results[] | select(.example=="qwen") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            simple=$(jq -r '.results[] | select(.example=="simple") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            train_math_net=$(jq -r '.results[] | select(.example=="train_math_net") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            whisper=$(jq -r '.results[] | select(.example=="whisper") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            yolo_v8=$(jq -r '.results[] | select(.example=="yolo_v8") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
+            
+            echo "| $os | $rust | $features | $llama | $moondream | $phi | $qwen | $simple | $train_math_net | $whisper | $yolo_v8 |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Legend:** ✅ = Build successful, ❌ = Build failed" >> $GITHUB_STEP_SUMMARY
