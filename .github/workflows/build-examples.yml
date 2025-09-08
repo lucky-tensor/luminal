@@ -174,7 +174,7 @@ jobs:
           echo "yolo_v8_status=FAIL" >> $GITHUB_OUTPUT
         fi
 
-    - name: Create JSON results
+    - name: Create JSON results and check for failures
       if: always()
       run: |
         cat > test-results/results.json << EOF
@@ -196,6 +196,14 @@ jobs:
           ]
         }
         EOF
+        
+        # Check if any tests failed and exit with error code if so
+        if grep -q "FAIL" test-results/results.json; then
+          echo "❌ Some tests failed - marking job as failed"
+          exit 1
+        else
+          echo "✅ All tests passed"
+        fi
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
