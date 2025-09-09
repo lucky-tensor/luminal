@@ -46,11 +46,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y nvidia-driver-535 nvidia-dkms-535
         
-        # Install CUDA 12.2 toolkit
+        # Install CUDA 12.2 essentials (avoid nsight-systems)
         wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
         sudo apt-get update
-        sudo apt-get -y install cuda-toolkit-12-2
+        sudo apt-get -y install cuda-compiler-12-2 cuda-libraries-dev-12-2 cuda-driver-dev-12-2 cuda-cudart-dev-12-2 cuda-runtime-12-2
         
         # Set up library paths
         echo "/usr/local/cuda-12.2/lib64" | sudo tee -a /etc/ld.so.conf
@@ -82,6 +82,7 @@ jobs:
 
     - name: Run llama example
       working-directory: examples/llama
+      timeout-minutes: 20
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: cargo run --release --features ${{ matrix.features }}
