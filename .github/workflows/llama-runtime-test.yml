@@ -35,24 +35,32 @@ jobs:
         override: true
         components: rustfmt, clippy
 
-    - name: Install NVIDIA drivers and setup paths (Ubuntu)
+    - name: Install CUDA and NVIDIA drivers (Ubuntu)
       if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
       run: |
-        # Install NVIDIA drivers
+        # Remove any existing conflicting packages
+        sudo apt-get remove --purge -y "nvidia-*" "cuda-*" || true
+        sudo apt-get autoremove -y || true
+        
+        # Install NVIDIA drivers 535 (compatible with CUDA 12.2)
         sudo apt-get update
-        sudo apt-get install -y nvidia-driver-535 nvidia-utils-535
+        sudo apt-get install -y nvidia-driver-535 nvidia-dkms-535
+        
+        # Install CUDA 12.2 toolkit
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo apt-get -y install cuda-toolkit-12-2
         
         # Set up library paths
-        echo "/usr/local/cuda/lib64" | sudo tee -a /etc/ld.so.conf
+        echo "/usr/local/cuda-12.2/lib64" | sudo tee -a /etc/ld.so.conf
         echo "/usr/lib/x86_64-linux-gnu" | sudo tee -a /etc/ld.so.conf
         sudo ldconfig
         
-        # Export library path for this session
-        export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-        
-        # Verify installation
+        # Verify CUDA installation
         nvidia-smi || echo "nvidia-smi not available"
-        ls -la /usr/lib/x86_64-linux-gnu/libcuda* || echo "libcuda not found"
+        ls -la /usr/local/cuda*/lib64/libcuda* 2>/dev/null || echo "CUDA libs not found"
+        ls -la /usr/lib/x86_64-linux-gnu/libcuda* 2>/dev/null || echo "System libcuda not found"
 
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
@@ -75,5 +83,5 @@ jobs:
     - name: Run llama example
       working-directory: examples/llama
       env:
-        LD_LIBRARY_PATH: "/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+        LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: cargo run --release --features ${{ matrix.features }}
