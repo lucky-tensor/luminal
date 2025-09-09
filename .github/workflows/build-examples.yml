@@ -1,4 +1,4 @@
-name: Test Examples
+name: Build Examples
 
 on:
   push:
@@ -49,41 +49,117 @@ jobs:
 
 
     - name: Test llama example
+      id: llama
       working-directory: examples/llama
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test moondream example
+      id: moondream
       working-directory: examples/moondream
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test phi example
+      id: phi
       working-directory: examples/phi
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test qwen example
+      id: qwen
       working-directory: examples/qwen
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test simple example (CPU only)
+      id: simple
       working-directory: examples/simple
       continue-on-error: true
       run: cargo build --verbose
 
     - name: Test train_math_net example
+      id: train_math_net
       working-directory: examples/train_math_net
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test whisper example
+      id: whisper
       working-directory: examples/whisper
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test yolo_v8 example
+      id: yolo_v8
       working-directory: examples/yolo_v8
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
+
+    - name: Save results as artifact
+      if: always()
+      run: |
+        mkdir -p results
+        echo "${{ matrix.os }},${{ matrix.rust }},${{ matrix.features }},${{ steps.llama.outcome }},${{ steps.moondream.outcome }},${{ steps.phi.outcome }},${{ steps.qwen.outcome }},${{ steps.simple.outcome }},${{ steps.train_math_net.outcome }},${{ steps.whisper.outcome }},${{ steps.yolo_v8.outcome }}" > results/matrix-${{ strategy.job-index }}.csv
+    
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: results-${{ strategy.job-index }}
+        path: results/
+        
+    - name: Check for failures  
+      if: always()
+      run: |
+        failed=false
+        ${{ steps.llama.outcome == 'failure' }} && failed=true
+        ${{ steps.moondream.outcome == 'failure' }} && failed=true
+        ${{ steps.phi.outcome == 'failure' }} && failed=true
+        ${{ steps.qwen.outcome == 'failure' }} && failed=true
+        ${{ steps.simple.outcome == 'failure' }} && failed=true
+        ${{ steps.train_math_net.outcome == 'failure' }} && failed=true
+        ${{ steps.whisper.outcome == 'failure' }} && failed=true
+        ${{ steps.yolo_v8.outcome == 'failure' }} && failed=true
+        
+        if [ "$failed" = "true" ]; then
+          echo "Some tests failed in this matrix"
+          exit 1
+        fi
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: test-examples
+    if: always()
+    steps:
+    - name: Download all results
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create consolidated table
+      run: |
+        echo "# 📊 Build Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
+        echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+        
+        # Process all CSV files
+        for csv_file in artifacts/*/matrix-*.csv; do
+          if [ -f "$csv_file" ]; then
+            while IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8; do
+              # Convert outcomes to emojis
+              llama_emoji=$([ "$llama" = "success" ] && echo "✅" || echo "❌")
+              moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || echo "❌")
+              phi_emoji=$([ "$phi" = "success" ] && echo "✅" || echo "❌")
+              qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || echo "❌")
+              simple_emoji=$([ "$simple" = "success" ] && echo "✅" || echo "❌")
+              train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || echo "❌")
+              whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || echo "❌")
+              yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || echo "❌")
+              
+              echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
+            done < "$csv_file"
+          fi
+        done
