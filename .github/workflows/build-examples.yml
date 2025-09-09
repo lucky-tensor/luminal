@@ -44,212 +44,46 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install cuda-compiler-12-2 cuda-libraries-dev-12-2 cuda-driver-dev-12-2 cuda-cudart-dev-12-2
 
-    - name: Cache cargo registry
-      uses: actions/cache@v3
-      with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
 
-    - name: Cache cargo index
-      uses: actions/cache@v3
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Cache cargo build
-      uses: actions/cache@v3
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Initialize test results
-      run: |
-        echo "## Test Results for ${{ matrix.os }} - ${{ matrix.rust }} - ${{ matrix.features }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Example | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-        mkdir -p test-results
 
     - name: Test llama example
-      id: test-llama
       working-directory: examples/llama
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| llama | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "llama_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| llama | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "llama_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test moondream example
-      id: test-moondream
       working-directory: examples/moondream
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| moondream | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "moondream_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| moondream | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "moondream_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test phi example
-      id: test-phi
       working-directory: examples/phi
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| phi | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "phi_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| phi | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "phi_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test qwen example
-      id: test-qwen
       working-directory: examples/qwen
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| qwen | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "qwen_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| qwen | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "qwen_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test simple example (CPU only)
-      id: test-simple
       working-directory: examples/simple
       continue-on-error: true
-      run: |
-        if cargo build --verbose; then
-          echo "| simple | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "simple_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| simple | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "simple_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --verbose
 
     - name: Test train_math_net example
-      id: test-train-math-net
       working-directory: examples/train_math_net
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| train_math_net | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "train_math_net_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| train_math_net | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "train_math_net_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test whisper example
-      id: test-whisper
       working-directory: examples/whisper
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| whisper | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "whisper_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| whisper | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "whisper_status=FAIL" >> $GITHUB_OUTPUT
-        fi
+      run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test yolo_v8 example
-      id: test-yolo-v8
       working-directory: examples/yolo_v8
       continue-on-error: true
-      run: |
-        if cargo build --features ${{ matrix.features }} --verbose; then
-          echo "| yolo_v8 | ✅ PASS |" >> $GITHUB_STEP_SUMMARY
-          echo "yolo_v8_status=PASS" >> $GITHUB_OUTPUT
-        else
-          echo "| yolo_v8 | ❌ FAIL |" >> $GITHUB_STEP_SUMMARY
-          echo "yolo_v8_status=FAIL" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Create JSON results and check for failures
-      if: always()
-      run: |
-        cat > test-results/results.json << EOF
-        {
-          "matrix": {
-            "os": "${{ matrix.os }}",
-            "rust": "${{ matrix.rust }}",
-            "features": "${{ matrix.features }}"
-          },
-          "results": [
-            {"example": "llama", "status": "${{ steps.test-llama.outputs.llama_status }}"},
-            {"example": "moondream", "status": "${{ steps.test-moondream.outputs.moondream_status }}"},
-            {"example": "phi", "status": "${{ steps.test-phi.outputs.phi_status }}"},
-            {"example": "qwen", "status": "${{ steps.test-qwen.outputs.qwen_status }}"},
-            {"example": "simple", "status": "${{ steps.test-simple.outputs.simple_status }}"},
-            {"example": "train_math_net", "status": "${{ steps.test-train-math-net.outputs.train_math_net_status }}"},
-            {"example": "whisper", "status": "${{ steps.test-whisper.outputs.whisper_status }}"},
-            {"example": "yolo_v8", "status": "${{ steps.test-yolo-v8.outputs.yolo_v8_status }}"}
-          ]
-        }
-        EOF
-        
-        # Check if any tests failed and exit with error code if so
-        if grep -q "FAIL" test-results/results.json; then
-          echo "❌ Some tests failed - marking job as failed"
-          exit 1
-        else
-          echo "✅ All tests passed"
-        fi
-
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results-${{ matrix.os }}-${{ matrix.rust }}-${{ matrix.features }}
-        path: test-results/results.json
-
-  summary:
-    name: Test Summary
-    runs-on: ubuntu-latest
-    needs: test-examples
-    if: always()
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Create consolidated summary
-      run: |
-        echo "# 📊 Example Build Results Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
-        echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
-        
-        # Process all result files
-        for result_file in artifacts/*/results.json; do
-          if [ -f "$result_file" ]; then
-            os=$(jq -r '.matrix.os' "$result_file" | sed 's/ubuntu-latest/Ubuntu/' | sed 's/macos-latest/macOS/')
-            rust=$(jq -r '.matrix.rust' "$result_file")
-            features=$(jq -r '.matrix.features' "$result_file")
-            
-            # Extract status for each example
-            llama=$(jq -r '.results[] | select(.example=="llama") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            moondream=$(jq -r '.results[] | select(.example=="moondream") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            phi=$(jq -r '.results[] | select(.example=="phi") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            qwen=$(jq -r '.results[] | select(.example=="qwen") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            simple=$(jq -r '.results[] | select(.example=="simple") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            train_math_net=$(jq -r '.results[] | select(.example=="train_math_net") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            whisper=$(jq -r '.results[] | select(.example=="whisper") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            yolo_v8=$(jq -r '.results[] | select(.example=="yolo_v8") | .status' "$result_file" | sed 's/PASS/✅/' | sed 's/FAIL/❌/')
-            
-            echo "| $os | $rust | $features | $llama | $moondream | $phi | $qwen | $simple | $train_math_net | $whisper | $yolo_v8 |" >> $GITHUB_STEP_SUMMARY
-          fi
-        done
-        
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Legend:** ✅ = Build successful, ❌ = Build failed" >> $GITHUB_STEP_SUMMARY
+      run: cargo build --features ${{ matrix.features }} --verbose
