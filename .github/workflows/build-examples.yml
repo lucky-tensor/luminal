@@ -56,42 +56,49 @@ jobs:
 
     - name: Test moondream example
       id: moondream
+      if: always()
       working-directory: examples/moondream
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test phi example
       id: phi
+      if: always()
       working-directory: examples/phi
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test qwen example
       id: qwen
+      if: always()
       working-directory: examples/qwen
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test simple example (CPU only)
       id: simple
+      if: always()
       working-directory: examples/simple
       continue-on-error: true
       run: cargo build --verbose
 
     - name: Test train_math_net example
       id: train_math_net
+      if: always()
       working-directory: examples/train_math_net
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test whisper example
       id: whisper
+      if: always()
       working-directory: examples/whisper
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test yolo_v8 example
       id: yolo_v8
+      if: always()
       working-directory: examples/yolo_v8
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
