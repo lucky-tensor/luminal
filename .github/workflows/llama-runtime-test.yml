@@ -46,6 +46,11 @@ jobs:
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
 
+    - name: run Setup script
+      working-directory: examples/llama
+      run: |
+        bash ./setup/setup.sh
+
     - name: Run llama example
       working-directory: examples/llama
       run: cargo run --release --features ${{ matrix.features }}
