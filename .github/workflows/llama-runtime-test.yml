@@ -50,4 +50,4 @@ jobs:
     - name: Run llama example
       working-directory: examples/llama
       continue-on-error: true
-      run: timeout 30m cargo run --release --features ${{ matrix.features }} -- --help
+      run: cargo run --release --features ${{ matrix.features }}
