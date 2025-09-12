@@ -7,10 +7,32 @@ on:
     branches: [ "main", "*dev" ]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  detect-gpu:
+    name: GPU Detection
+    runs-on: ubuntu-latest
+    outputs:
+      cuda_available: ${{ steps.gpu.outputs.available }}
+    steps:
+    - name: Check for NVIDIA GPU
+      id: gpu
+      run: |
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "✅ Physical GPU detected"
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+        else
+          echo "available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No physical GPU detected"  
+        fi
+
   runtime-test:
     name: Runtime Test
     runs-on: ${{ matrix.os }}
+    needs: detect-gpu
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -25,45 +47,26 @@ jobs:
           - os: macos-latest
             features: cuda
 
+    env:
+      CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Check for GPU hardware
-      id: gpu-check
-      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
-      run: |
-        if command -v nvidia-smi &> /dev/null; then
-          if nvidia-smi &> /dev/null; then
-            echo "gpu_available=true" >> $GITHUB_OUTPUT
-            echo "✅ GPU detected:"
-            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-          else
-            echo "gpu_available=false" >> $GITHUB_OUTPUT
-            echo "⚠️  nvidia-smi found but no GPU detected"
-          fi
-        else
-          echo "gpu_available=false" >> $GITHUB_OUTPUT
-          echo "ℹ️  No GPU detected, skipping CUDA tests"
-        fi
-
-    - name: Install CUDA and NVIDIA drivers (Ubuntu)
-      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda' && steps.gpu-check.outputs.gpu_available == 'true'
+    - name: Setup CUDA
+      if: matrix.features == 'cuda' && env.CUDA_AVAILABLE != 'true'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
 
-    - name: Setup Rust cache
+    - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
 
     - name: Cache model files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: examples/llama/setup
         key: llama-models-${{ hashFiles('examples/llama/setup/setup.sh') }}
@@ -71,7 +74,7 @@ jobs:
     - name: Run setup script if needed
       working-directory: examples/llama
       run: |
-        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+        if [[ "${{ matrix.features }}" == "cuda" && "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
           echo "⏭️ Skipping model setup - CUDA test will be skipped"
           exit 0
         fi
@@ -81,23 +84,21 @@ jobs:
           echo "Model files already exist, skipping setup"
         fi
 
-    - name: Run llama example  
-      id: llama-test
+    - name: Run llama example
       working-directory: examples/llama
-      timeout-minutes: 20
+      timeout-minutes: 15
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+        if [[ "${{ matrix.features }}" == "cuda" && "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
           echo "⏭️ Skipping CUDA test - no physical GPU available"
-          echo "conclusion=skipped" >> $GITHUB_OUTPUT
           exit 0
         fi
+        
         echo "🚀 Running Llama model with ${{ matrix.features }}..."
-        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
+        if [[ "${{ env.CUDA_AVAILABLE }}" == "true" ]]; then
           echo "✅ Using physical GPU acceleration"
         else
           echo "✅ Using ${{ matrix.features }} acceleration"
         fi
         cargo run --release --features ${{ matrix.features }}
-        echo "conclusion=success" >> $GITHUB_OUTPUT

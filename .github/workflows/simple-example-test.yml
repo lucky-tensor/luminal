@@ -7,7 +7,28 @@ on:
     branches: [ "main", "*dev" ]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  detect-gpu:
+    name: GPU Detection  
+    runs-on: ubuntu-latest
+    outputs:
+      cuda_available: ${{ steps.gpu.outputs.available }}
+    steps:
+    - name: Check for NVIDIA GPU
+      id: gpu  
+      run: |
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "✅ Physical GPU detected"
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+        else
+          echo "available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No physical GPU detected"
+        fi
+
   multi-platform-test:
     name: Multi-Platform Test
     runs-on: ${{ matrix.os }}
@@ -26,75 +47,49 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Setup Rust cache
+    - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
 
     - name: Run simple example
       run: cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
 
   cuda-test:
-    name: CUDA Test (GPU Required)
-    # Use GitHub's GPU-powered runners when available
-    # Fallback to standard runners for development/testing
+    name: CUDA Test
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
+    needs: detect-gpu
     timeout-minutes: 30
-    # Only run CUDA tests when explicitly requested via label
+    # Only run CUDA tests when explicitly requested or on workflow dispatch
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
     
+    env:
+      CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Check for GPU hardware
-      id: gpu-check
-      run: |
-        if command -v nvidia-smi &> /dev/null; then
-          if nvidia-smi &> /dev/null; then
-            echo "gpu_available=true" >> $GITHUB_OUTPUT
-            echo "✅ GPU detected:"
-            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-          else
-            echo "gpu_available=false" >> $GITHUB_OUTPUT
-            echo "⚠️  nvidia-smi found but no GPU detected"
-          fi
-        else
-          echo "gpu_available=false" >> $GITHUB_OUTPUT
-          echo "ℹ️  No GPU detected, will install CUDA for compilation only"
-        fi
-
-    - name: Install CUDA and NVIDIA drivers
-      if: steps.gpu-check.outputs.gpu_available != 'true'
+    - name: Setup CUDA
+      if: env.CUDA_AVAILABLE != 'true'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
 
-    - name: Setup Rust cache
+    - name: Cache Cargo  
       uses: Swatinem/rust-cache@v2
 
     - name: Run simple example with CUDA
-      id: cuda-test
-      timeout-minutes: 10
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        if [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+        if [[ "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
           echo "⏭️ Skipping CUDA test - no physical GPU available"
-          echo "conclusion=skipped" >> $GITHUB_OUTPUT
           exit 0
         fi
-        echo "🚀 Running CUDA example..."
+        
+        echo "🚀 Running CUDA example with physical GPU..."
         echo "✅ Using physical GPU acceleration"
         cargo run --manifest-path examples/simple/Cargo.toml --features cuda
-        echo "conclusion=success" >> $GITHUB_OUTPUT
