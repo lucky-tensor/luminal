@@ -559,7 +559,7 @@ impl Module<(GraphTensor, GraphTensor, GraphTensor)> for DetectionHead {
         let cls = x_cat.slice((.., self.ch * 4..));
 
         let dbox = dist2bbox(self.dfl.forward(box_), anchors);
-        let dbox = dbox * strides.expand_to(dbox.shape);
+        let dbox = dbox * strides.expand(dbox.shape);
         let pred = dbox.concat_along(cls.sigmoid(), 1);
         (pred, anchors, strides)
     }

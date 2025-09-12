@@ -3,12 +3,19 @@ name = "simple"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["cpu"]
+cpu = ["dep:luminal_cpu"]
+cuda = ["dep:luminal_cuda"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 itertools = "0.14.0"
 luminal = { path = "../.." }
 luminal_nn = {path="../../crates/luminal_nn"}
+luminal_cpu = { path = "../../crates/luminal_cpu", optional = true }
+luminal_cuda = { path = "../../crates/luminal_cuda", optional = true }
 rand = "0.9.1"
 regex = "1.11.1"
 serde_json = "1.0.140"

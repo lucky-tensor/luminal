@@ -18,9 +18,28 @@ fn main() {
     // Make an input tensor
     let a = cx.tensor(4).set(vec![1., 2., 3., 4.]);
     // Feed tensor through model
-    let b = model.forward(a).retrieve();
+    let mut b = model.forward(a).retrieve();
+
+    // Compile the graph for optimal execution
+    #[cfg(feature = "cuda")]
+    cx.compile(
+        (
+            GenericCompiler::default(),
+            luminal_cuda::CudaCompiler::<f32>::default(),
+        ),
+        &mut b,
+    );
+    
+    #[cfg(all(feature = "cpu", not(feature = "cuda")))]
+    cx.compile(
+        (
+            GenericCompiler::default(),
+            luminal_cpu::CPUCompiler::default(),
+        ),
+        &mut b,
+    );
 
     // Execute the graph
-    cx.execute_debug();
+    cx.execute();
     println!("B: {:?}", b.data());
 }

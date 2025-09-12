@@ -86,10 +86,7 @@ fn main() {
             #[cfg(feature = "metal")]
             luminal_metal::MetalCompiler::<f32>::default(),
             #[cfg(feature = "cuda")]
-            (
-                luminal_cuda::CudaCompiler::<f16>::default(),
-                luminal_cuda::CudaQuantizedCompiler::<f16>::new(q_weights),
-            ),
+            luminal_cuda::CudaCompiler::<f16>::default(),
             #[cfg(all(not(feature = "metal"), not(feature = "cuda")))]
             luminal_cpu::CPUCompiler::default(),
         ),
