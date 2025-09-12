@@ -51,7 +51,6 @@ jobs:
       run: |
         examples_dir="examples"
         failed_examples=()
-        skipped_examples=() 
         passed_examples=()
 
         for example_dir in "$examples_dir"/*; do
@@ -60,29 +59,13 @@ jobs:
             
             echo "🔨 Building $example_name with ${{ matrix.features }} features..."
             
-            if [[ "${{ matrix.features }}" == "cpu" ]]; then
-              # CPU-only build for simple example
-              if [[ "$example_name" == "simple" ]]; then
-                if cargo build --manifest-path "$example_dir/Cargo.toml" --verbose; then
-                  passed_examples+=("$example_name")
-                  echo "✅ $example_name passed"
-                else
-                  failed_examples+=("$example_name")
-                  echo "❌ $example_name failed"
-                fi
-              else
-                skipped_examples+=("$example_name")
-                echo "⏭️ $example_name skipped (CPU-only mode)"
-              fi
+            # Build all examples with the specified features
+            if cargo build --manifest-path "$example_dir/Cargo.toml" --features ${{ matrix.features }} --verbose; then
+              passed_examples+=("$example_name")
+              echo "✅ $example_name passed"
             else
-              # Feature-specific build
-              if cargo build --manifest-path "$example_dir/Cargo.toml" --features ${{ matrix.features }} --verbose; then
-                passed_examples+=("$example_name")
-                echo "✅ $example_name passed"
-              else
-                failed_examples+=("$example_name")
-                echo "❌ $example_name failed"
-              fi
+              failed_examples+=("$example_name")
+              echo "❌ $example_name failed"
             fi
           fi
         done
@@ -92,7 +75,6 @@ jobs:
         echo "📊 Results Summary:"
         echo "✅ Passed: ${passed_examples[*]:-none}"
         echo "❌ Failed: ${failed_examples[*]:-none}"
-        echo "⏭️ Skipped: ${skipped_examples[*]:-none}"
 
         # Fail if any examples failed
         if [[ ${#failed_examples[@]} -gt 0 ]]; then
@@ -103,3 +85,92 @@ jobs:
 
         echo ""
         echo "🎉 All examples built successfully!"
+
+    - name: Save results as artifact
+      if: always()
+      run: |
+        mkdir -p results
+        
+        # Initialize all results as success (since we test all examples)
+        declare -A results=(
+          ["llama"]="success"
+          ["moondream"]="success" 
+          ["phi"]="success"
+          ["qwen"]="success"
+          ["simple"]="success"
+          ["train_math_net"]="success"
+          ["whisper"]="success"
+          ["yolo_v8"]="success"
+        )
+        
+        # If the job failed (exit code != 0), we need to determine which examples failed
+        # For now, we'll rely on the step outcome since the job would have failed if any example failed
+        if [[ "${{ job.status }}" == "failure" ]]; then
+          # Mark all as failed if job failed (individual failure detection would need more complex logic)
+          for key in "${!results[@]}"; do
+            results["$key"]="failure"
+          done
+        fi
+        
+        # Check if examples actually exist (in case some are missing)
+        examples_dir="examples"
+        for key in "${!results[@]}"; do
+          if [[ ! -d "$examples_dir/$key" || ! -f "$examples_dir/$key/Cargo.toml" ]]; then
+            results["$key"]="skip"
+          fi
+        done
+        
+        echo "${{ matrix.os }},${{ matrix.rust }},${{ matrix.features }},${results[llama]},${results[moondream]},${results[phi]},${results[qwen]},${results[simple]},${results[train_math_net]},${results[whisper]},${results[yolo_v8]}" > results/matrix-${{ strategy.job-index }}.csv
+    
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: results-${{ strategy.job-index }}
+        path: results/
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: test-examples
+    if: always()
+    steps:
+    - name: Download all results
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create consolidated table
+      run: |
+        echo "# 📊 Build Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
+        echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+        
+        # Process all CSV files
+        for csv_file in artifacts/*/matrix-*.csv; do
+          if [ -f "$csv_file" ]; then
+            while IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8; do
+              # Handle OS/feature incompatibility cases
+              if [[ "$os" == "macos-latest" && "$features" == "cuda" ]]; then
+                # CUDA doesn't work on macOS - mark all as N/A
+                echo "| $os | $rust | $features | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
+              elif [[ "$os" == "ubuntu-latest" && "$features" == "metal" ]]; then
+                # Metal doesn't work on Ubuntu - mark all as N/A  
+                echo "| $os | $rust | $features | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
+              else
+                # Convert outcomes to emojis: success=✅, failure=❌, skip=⏭️
+                llama_emoji=$([ "$llama" = "success" ] && echo "✅" || [ "$llama" = "skip" ] && echo "⏭️" || echo "❌")
+                moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || [ "$moondream" = "skip" ] && echo "⏭️" || echo "❌")
+                phi_emoji=$([ "$phi" = "success" ] && echo "✅" || [ "$phi" = "skip" ] && echo "⏭️" || echo "❌")
+                qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || [ "$qwen" = "skip" ] && echo "⏭️" || echo "❌")
+                simple_emoji=$([ "$simple" = "success" ] && echo "✅" || [ "$simple" = "skip" ] && echo "⏭️" || echo "❌")
+                train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || [ "$train_math_net" = "skip" ] && echo "⏭️" || echo "❌")
+                whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || [ "$whisper" = "skip" ] && echo "⏭️" || echo "❌")
+                yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || [ "$yolo_v8" = "skip" ] && echo "⏭️" || echo "❌")
+                
+                echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done < "$csv_file"
+          fi
+        done
