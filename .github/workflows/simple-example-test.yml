@@ -1,0 +1,68 @@
+name: Simple Example Test
+
+on:
+  push:
+    branches: [ "main", "*dev", "ci*" ]
+  pull_request:
+    branches: [ "main", "*dev" ]
+  workflow_dispatch:
+
+jobs:
+  multi-platform-test:
+    name: Multi-Platform Test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [cpu, metal]
+        exclude:
+          # Metal only works on macOS
+          - os: ubuntu-latest
+            features: metal
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run simple example
+      run: cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
+
+  cuda-test:
+    name: CUDA Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Install CUDA and NVIDIA drivers
+      run: |
+        chmod +x ./installers/setup-nvidia.sh
+        ./installers/setup-nvidia.sh
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run simple example with CUDA
+      timeout-minutes: 10
+      env:
+        LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+      run: cargo run --manifest-path examples/simple/Cargo.toml --features cuda

@@ -1,0 +1,67 @@
+name: Phi Runtime Test
+
+on:
+  push:
+    branches: [ "main", "*dev", "ci*" ]
+  pull_request:
+    branches: [ "main", "*dev" ]
+  workflow_dispatch:
+
+jobs:
+  runtime-test:
+    name: Runtime Test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [cuda, metal]
+        exclude:
+          # Metal only works on macOS
+          - os: ubuntu-latest
+            features: metal
+          # CUDA only works on Ubuntu (for CI)
+          - os: macos-latest
+            features: cuda
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Install CUDA and NVIDIA drivers (Ubuntu)
+      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
+      run: |
+        chmod +x ./installers/setup-nvidia.sh
+        ./installers/setup-nvidia.sh
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Cache model files
+      uses: actions/cache@v3
+      with:
+        path: examples/phi/setup
+        key: phi-models-${{ hashFiles('examples/phi/setup/setup.sh') }}
+
+    - name: Run setup script if needed
+      working-directory: examples/phi
+      run: |
+        if [ ! -f setup/*.gguf ]; then
+          bash ./setup/setup.sh
+        else
+          echo "Model files already exist, skipping setup"
+        fi
+
+    - name: Run phi example
+      working-directory: examples/phi
+      timeout-minutes: 5
+      env:
+        LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+      run: cargo run --release --features ${{ matrix.features }} -- --gen_tokens 10

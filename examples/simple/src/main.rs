@@ -21,19 +21,14 @@ fn main() {
     let mut b = model.forward(a).retrieve();
 
     // Compile the graph for optimal execution
-    #[cfg(feature = "cuda")]
     cx.compile(
         (
             GenericCompiler::default(),
+            #[cfg(feature = "metal")]
+            luminal_metal::MetalCompiler::<f32>::default(),
+            #[cfg(feature = "cuda")]
             luminal_cuda::CudaCompiler::<f32>::default(),
-        ),
-        &mut b,
-    );
-    
-    #[cfg(all(feature = "cpu", not(feature = "cuda")))]
-    cx.compile(
-        (
-            GenericCompiler::default(),
+            #[cfg(all(not(feature = "metal"), not(feature = "cuda")))]
             luminal_cpu::CPUCompiler::default(),
         ),
         &mut b,
