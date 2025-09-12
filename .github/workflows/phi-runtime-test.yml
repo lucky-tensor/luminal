@@ -30,7 +30,7 @@ jobs:
           echo "✅ Physical GPU detected"
           nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
         else
-          echo "available=false" >> $GITHUB_OUTPUT  
+          echo "available=false" >> $GITHUB_OUTPUT
           echo "ℹ️ No physical GPU detected"
         fi
 
@@ -144,7 +144,7 @@ jobs:
           echo "⏭️ Skipping CUDA test - no physical GPU available"
           exit 0
         fi
-        
+
         echo "🚀 Running Phi-3 model with CUDA..."
         echo "✅ Using physical GPU acceleration"
         cargo run --release --features cuda -- --gen_tokens 10
