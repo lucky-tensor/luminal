@@ -8,22 +8,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  runtime-test:
-    name: Runtime Test
-    runs-on: ${{ matrix.os }}
+  metal-test:
+    name: Metal Test (macOS)
+    runs-on: macos-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        features: [cuda, metal]
-        exclude:
-          # Metal only works on macOS
-          - os: ubuntu-latest
-            features: metal
-          # CUDA only works on Ubuntu (for CI)
-          - os: macos-latest
-            features: cuda
 
     steps:
     - uses: actions/checkout@v4
@@ -35,8 +23,66 @@ jobs:
         override: true
         components: rustfmt, clippy
 
-    - name: Install CUDA and NVIDIA drivers (Ubuntu)
-      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Cache model files
+      uses: actions/cache@v3
+      with:
+        path: examples/phi/setup
+        key: phi-models-${{ hashFiles('examples/phi/setup/setup.sh') }}
+
+    - name: Run setup script if needed
+      working-directory: examples/phi
+      run: |
+        if [ ! -f setup/*.gguf ]; then
+          bash ./setup/setup.sh
+        else
+          echo "Model files already exist, skipping setup"
+        fi
+
+    - name: Run phi example with Metal
+      working-directory: examples/phi
+      timeout-minutes: 5
+      run: cargo run --release --features metal -- --gen_tokens 10
+
+  cuda-test:
+    name: CUDA Test (GPU Required)
+    # Use GPU-powered runners when available, otherwise skip
+    runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    # Only run CUDA tests when explicitly requested or on workflow dispatch
+    if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Check for GPU hardware
+      id: gpu-check
+      run: |
+        if command -v nvidia-smi &> /dev/null; then
+          if nvidia-smi &> /dev/null; then
+            echo "gpu_available=true" >> $GITHUB_OUTPUT
+            echo "✅ GPU detected:"
+            nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+          else
+            echo "gpu_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️  nvidia-smi found but no GPU detected"
+          fi
+        else
+          echo "gpu_available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️  No GPU detected, will install CUDA for compilation only"
+        fi
+
+    - name: Install CUDA and NVIDIA drivers
+      if: steps.gpu-check.outputs.gpu_available != 'true'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
@@ -59,9 +105,16 @@ jobs:
           echo "Model files already exist, skipping setup"
         fi
 
-    - name: Run phi example
+    - name: Run phi example with CUDA
       working-directory: examples/phi
       timeout-minutes: 5
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-      run: cargo run --release --features ${{ matrix.features }} -- --gen_tokens 10
+      run: |
+        echo "🚀 Running Phi-3 model with CUDA..."
+        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
+          echo "✅ Using physical GPU acceleration"
+        else
+          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
+        fi
+        cargo run --release --features cuda -- --gen_tokens 10

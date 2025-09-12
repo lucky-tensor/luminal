@@ -39,9 +39,13 @@ jobs:
       run: cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
 
   cuda-test:
-    name: CUDA Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    name: CUDA Test (GPU Required)
+    # Use GitHub's GPU-powered runners when available
+    # Fallback to standard runners for development/testing
+    runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    # Only run CUDA tests when explicitly requested via label
+    if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
     
     steps:
     - uses: actions/checkout@v4
@@ -53,7 +57,25 @@ jobs:
         override: true
         components: rustfmt, clippy
 
+    - name: Check for GPU hardware
+      id: gpu-check
+      run: |
+        if command -v nvidia-smi &> /dev/null; then
+          if nvidia-smi &> /dev/null; then
+            echo "gpu_available=true" >> $GITHUB_OUTPUT
+            echo "✅ GPU detected:"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+          else
+            echo "gpu_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️  nvidia-smi found but no GPU detected"
+          fi
+        else
+          echo "gpu_available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️  No GPU detected, will install CUDA for compilation only"
+        fi
+
     - name: Install CUDA and NVIDIA drivers
+      if: steps.gpu-check.outputs.gpu_available != 'true'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
@@ -65,4 +87,11 @@ jobs:
       timeout-minutes: 10
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-      run: cargo run --manifest-path examples/simple/Cargo.toml --features cuda
+      run: |
+        echo "🚀 Running CUDA example..."
+        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
+          echo "✅ Using physical GPU acceleration"
+        else
+          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
+        fi
+        cargo run --manifest-path examples/simple/Cargo.toml --features cuda
