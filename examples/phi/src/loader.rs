@@ -4,7 +4,7 @@ use std::path::Path;
 use luminal::{op::Function, prelude::*};
 
 #[cfg(feature = "cuda")]
-use luminal_cuda::{CudaData, CudaContext};
+use luminal_cuda::{CudaContext, CudaData};
 
 use crate::gguf::*;
 
@@ -134,9 +134,9 @@ pub fn q8_load<P: AsRef<Path>, M: SerializeModule>(
                             })
                             .collect::<Vec<_>>(),
                     )],
-                    GgmlDType::Q8_0 => vec![Tensor::new(CudaData(
-                        stream.memcpy_stod(&bytes).unwrap(),
-                    ))],
+                    GgmlDType::Q8_0 => {
+                        vec![Tensor::new(CudaData(stream.memcpy_stod(&bytes).unwrap()))]
+                    }
                     _ => unimplemented!(),
                 }
             });

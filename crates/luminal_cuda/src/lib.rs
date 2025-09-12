@@ -38,7 +38,7 @@ fn find_cuda_include_path() -> String {
             return path;
         }
     }
-    
+
     // Check common CUDA installation paths
     let common_paths = [
         "/usr/local/cuda/include",
@@ -47,7 +47,7 @@ fn find_cuda_include_path() -> String {
         "/usr/include/cuda",
         "/usr/include",
     ];
-    
+
     // Look for cuda_fp16.h specifically
     for path in &common_paths {
         let cuda_fp16_path = format!("{}/cuda_fp16.h", path);
@@ -55,7 +55,7 @@ fn find_cuda_include_path() -> String {
             return path.to_string();
         }
     }
-    
+
     // Try to find CUDA installation dynamically
     if let Ok(output) = std::process::Command::new("find")
         .args(&["/usr/local", "-name", "cuda_fp16.h", "-type", "f"])
@@ -69,7 +69,7 @@ fn find_cuda_include_path() -> String {
             }
         }
     }
-    
+
     // Fallback to original path
     "/usr/include".to_string()
 }
