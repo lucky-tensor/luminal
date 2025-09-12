@@ -11,54 +11,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  detect-gpu:
-    name: GPU Detection
-    runs-on: ubuntu-latest
-    outputs:
-      cuda_available: ${{ steps.gpu.outputs.available }}
-    steps:
-    - name: Check for NVIDIA GPU
-      id: gpu
-      run: |
-        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-          echo "available=true" >> $GITHUB_OUTPUT
-          echo "✅ Physical GPU detected"
-        else
-          echo "available=false" >> $GITHUB_OUTPUT  
-          echo "ℹ️ No physical GPU detected"
-        fi
-
   test-examples:
     name: Test Examples
     runs-on: ${{ matrix.os }}
-    needs: detect-gpu
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        rust: [stable]
+        rust: [1.85, stable, beta]
         features: [cpu, cuda, metal]
         exclude:
           # Metal only works on macOS
           - os: ubuntu-latest
             features: metal
-          # CUDA only works on Ubuntu (for CI)  
+          # CUDA doesn't build on macOS
           - os: macos-latest
             features: cuda
-          # Skip CUDA if no GPU available
-          - features: cuda
-            os: ubuntu-latest
-        include:
-          # Only include CUDA on Ubuntu when GPU is available
-          - os: ubuntu-latest
-            rust: stable  
-            features: cuda
-            cuda_required: true
 
-    env:
-      CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
-      
     steps:
     - uses: actions/checkout@v4
 
@@ -68,8 +38,8 @@ jobs:
         toolchain: ${{ matrix.rust }}
         components: rustfmt, clippy
 
-    - name: Setup CUDA
-      if: matrix.features == 'cuda' && env.CUDA_AVAILABLE == 'true'
+    - name: Install CUDA headers (Ubuntu)
+      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
@@ -78,15 +48,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - name: Test Examples
-      env:
-        LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        # Skip CUDA tests if no GPU available
-        if [[ "${{ matrix.features }}" == "cuda" && "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
-          echo "⏭️ Skipping CUDA tests - no physical GPU available"
-          exit 0
-        fi
-
         examples_dir="examples"
         failed_examples=()
         skipped_examples=() 
