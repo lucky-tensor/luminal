@@ -1,5 +1,10 @@
 name: Llama Runtime Test
 
+# Tests the Llama example with model download and execution
+# - Multi-platform: Ubuntu (CPU/default), macOS (CPU/Metal)
+# - CUDA testing: Only on GPU runners when explicitly requested or workflow_dispatch
+# - Includes model caching and setup script execution
+
 on:
   push:
     branches: [ "main", "*dev", "ci*" ]
@@ -26,7 +31,7 @@ jobs:
           nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
         else
           echo "available=false" >> $GITHUB_OUTPUT
-          echo "ℹ️ No physical GPU detected"  
+          echo "ℹ️ No physical GPU detected"
         fi
 
   multi-platform-test:
@@ -51,6 +56,8 @@ jobs:
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4
@@ -87,7 +94,7 @@ jobs:
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
     needs: detect-gpu
     timeout-minutes: 60
-    # Only run CUDA tests when explicitly requested or on workflow dispatch
+    # Only run CUDA tests when explicitly requested via 'test-gpu' label or manual trigger
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
 
     env:
@@ -107,6 +114,8 @@ jobs:
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4

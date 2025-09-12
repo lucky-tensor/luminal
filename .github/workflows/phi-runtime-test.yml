@@ -1,5 +1,10 @@
 name: Phi Runtime Test
 
+# Tests the Phi-3 example with model download and execution (faster than Llama)
+# - Multi-platform: Ubuntu (CPU/default), macOS (CPU/Metal)
+# - CUDA testing: Only on GPU runners when explicitly requested or workflow_dispatch
+# - Uses --gen_tokens 10 for faster execution, includes model caching
+
 on:
   push:
     branches: [ "main", "*dev", "ci*" ]
@@ -51,6 +56,8 @@ jobs:
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4
@@ -85,7 +92,7 @@ jobs:
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
     needs: detect-gpu
     timeout-minutes: 30
-    # Only run CUDA tests when explicitly requested or on workflow dispatch
+    # Only run CUDA tests when explicitly requested via 'test-gpu' label or manual trigger
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
 
     env:
@@ -100,11 +107,13 @@ jobs:
     - name: Setup CUDA
       if: env.CUDA_AVAILABLE != 'true'
       run: |
-        chmod +x ./installers/setup-nvidia.sh  
+        chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4

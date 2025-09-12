@@ -1,5 +1,9 @@
 name: Build Examples
 
+# Tests compilation of all examples across different OS, Rust versions, and features
+# Matrix includes: ubuntu-latest + macos-latest, Rust 1.85/stable/beta, default/cuda/metal features
+# Generates a consolidated summary table with build results for each combination
+
 on:
   push:
     branches: [ "main", "*dev", "ci*" ]
@@ -22,10 +26,10 @@ jobs:
         rust: [1.85, stable, beta]
         features: [default, cuda, metal]
         exclude:
-          # Metal only works on macOS
+          # Metal backend only works on macOS
           - os: ubuntu-latest
             features: metal
-          # CUDA doesn't build on macOS
+          # CUDA backend doesn't build on macOS
           - os: macos-latest
             features: cuda
 
@@ -41,6 +45,8 @@ jobs:
 
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
 
     - name: Test llama example
@@ -138,6 +144,7 @@ jobs:
           cargo build --features ${{ matrix.features }} --verbose
         fi
 
+    # Save individual matrix results for consolidation in summary job
     - name: Save results as artifact
       if: always()
       run: |
@@ -151,7 +158,7 @@ jobs:
         name: results-${{ strategy.job-index }}
         path: results/
         
-    - name: Check for failures  
+    - name: Check for failures
       if: always()
       run: |
         failed=false
@@ -180,6 +187,7 @@ jobs:
       with:
         path: artifacts
 
+    # Generate markdown table with build results sorted by OS, features, then Rust version
     - name: Create consolidated table
       run: |
         echo "# 📊 Build Results Summary" >> $GITHUB_STEP_SUMMARY
@@ -187,21 +195,40 @@ jobs:
         echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
         echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
         
-        # Process all CSV files
-        for csv_file in artifacts/*/matrix-*.csv; do
-          if [ -f "$csv_file" ]; then
-            while IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8; do
-              # Convert outcomes to emojis
-              llama_emoji=$([ "$llama" = "success" ] && echo "✅" || echo "❌")
-              moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || echo "❌")
-              phi_emoji=$([ "$phi" = "success" ] && echo "✅" || echo "❌")
-              qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || echo "❌")
-              simple_emoji=$([ "$simple" = "success" ] && echo "✅" || echo "❌")
-              train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || echo "❌")
-              whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || echo "❌")
-              yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || echo "❌")
+        # Process results in hardcoded order: OS → Features → Rust version
+        # Order: ubuntu-latest → macos-latest, default → cuda → metal, 1.85 → stable → beta
+        for os in ubuntu-latest macos-latest; do
+          for features in default cuda metal; do
+            for rust in 1.85 stable beta; do
+              # Skip invalid combinations
+              [[ "$os" == "ubuntu-latest" && "$features" == "metal" ]] && continue
+              [[ "$os" == "macos-latest" && "$features" == "cuda" ]] && continue
               
-              echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
-            done < "$csv_file"
-          fi
+              # Find matching CSV file
+              csv_line=""
+              for csv_file in artifacts/*/matrix-*.csv; do
+                if [ -f "$csv_file" ]; then
+                  csv_line=$(grep "^$os,$rust,$features," "$csv_file" 2>/dev/null || true)
+                  [ -n "$csv_line" ] && break
+                fi
+              done
+              
+              # Process the line if found
+              if [ -n "$csv_line" ]; then
+                IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8 <<< "$csv_line"
+                
+                # Convert outcomes to emojis
+                llama_emoji=$([ "$llama" = "success" ] && echo "✅" || echo "❌")
+                moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || echo "❌")
+                phi_emoji=$([ "$phi" = "success" ] && echo "✅" || echo "❌")
+                qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || echo "❌")
+                simple_emoji=$([ "$simple" = "success" ] && echo "✅" || echo "❌")
+                train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || echo "❌")
+                whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || echo "❌")
+                yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || echo "❌")
+                
+                echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          done
         done
