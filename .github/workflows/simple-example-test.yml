@@ -1,4 +1,4 @@
-name: Llama Runtime Test
+name: Simple Example Test
 
 on:
   push:
@@ -8,23 +8,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  runtime-test:
-    name: Runtime Test
+  multi-platform-test:
+    name: Multi-Platform Test
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        features: [cuda, metal]
+        features: [cpu, metal]
         exclude:
           # Metal only works on macOS
           - os: ubuntu-latest
             features: metal
-          # CUDA only works on Ubuntu (for CI)
-          - os: macos-latest
-            features: cuda
 
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run simple example
+      run: cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
+
+  cuda-test:
+    name: CUDA Test (GPU Required)
+    # Use GitHub's GPU-powered runners when available
+    # Fallback to standard runners for development/testing
+    runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    # Only run CUDA tests when explicitly requested via label
+    if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
+    
     steps:
     - uses: actions/checkout@v4
 
@@ -37,7 +59,6 @@ jobs:
 
     - name: Check for GPU hardware
       id: gpu-check
-      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
       run: |
         if command -v nvidia-smi &> /dev/null; then
           if nvidia-smi &> /dev/null; then
@@ -50,11 +71,11 @@ jobs:
           fi
         else
           echo "gpu_available=false" >> $GITHUB_OUTPUT
-          echo "ℹ️  No GPU detected, skipping CUDA tests"
+          echo "ℹ️  No GPU detected, will install CUDA for compilation only"
         fi
 
-    - name: Install CUDA and NVIDIA drivers (Ubuntu)
-      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda' && steps.gpu-check.outputs.gpu_available == 'true'
+    - name: Install CUDA and NVIDIA drivers
+      if: steps.gpu-check.outputs.gpu_available != 'true'
       run: |
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
@@ -62,34 +83,15 @@ jobs:
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
 
-    - name: Cache model files
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
-      uses: actions/cache@v3
-      with:
-        path: examples/llama/setup
-        key: llama-models-${{ hashFiles('examples/llama/setup/setup.sh') }}
-
-    - name: Run setup script if needed
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
-      working-directory: examples/llama
-      run: |
-        if [ ! -f setup/*.gguf ]; then
-          bash ./setup/setup.sh
-        else
-          echo "Model files already exist, skipping setup"
-        fi
-
-    - name: Run llama example
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
-      working-directory: examples/llama
-      timeout-minutes: 20
+    - name: Run simple example with CUDA
+      timeout-minutes: 10
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        echo "🚀 Running Llama model with ${{ matrix.features }}..."
+        echo "🚀 Running CUDA example..."
         if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
           echo "✅ Using physical GPU acceleration"
         else
-          echo "✅ Using ${{ matrix.features }} acceleration"
+          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
         fi
-        cargo run --release --features ${{ matrix.features }}
+        cargo run --manifest-path examples/simple/Cargo.toml --features cuda

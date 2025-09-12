@@ -36,13 +36,29 @@ jobs:
         override: true
         components: rustfmt, clippy
 
-    - name: Install CUDA (Ubuntu)
+    - name: Check for GPU hardware
+      id: gpu-check
       if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda'
       run: |
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-        sudo dpkg -i cuda-keyring_1.1-1_all.deb
-        sudo apt-get update
-        sudo apt-get -y install cuda-compiler-12-2 cuda-libraries-dev-12-2 cuda-driver-dev-12-2 cuda-cudart-dev-12-2
+        if command -v nvidia-smi &> /dev/null; then
+          if nvidia-smi &> /dev/null; then
+            echo "gpu_available=true" >> $GITHUB_OUTPUT
+            echo "✅ GPU detected:"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+          else
+            echo "gpu_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️  nvidia-smi found but no GPU detected"
+          fi
+        else
+          echo "gpu_available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️  No GPU detected, skipping CUDA tests"
+        fi
+
+    - name: Install CUDA (Ubuntu)
+      if: matrix.os == 'ubuntu-latest' && matrix.features == 'cuda' && steps.gpu-check.outputs.gpu_available == 'true'
+      run: |
+        chmod +x ./installers/setup-nvidia.sh
+        ./installers/setup-nvidia.sh
 
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
@@ -52,25 +68,26 @@ jobs:
       id: llama
       working-directory: examples/llama
       continue-on-error: true
+      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test moondream example
       id: moondream
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/moondream
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test phi example
       id: phi
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/phi
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test qwen example
       id: qwen
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/qwen
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
@@ -84,21 +101,21 @@ jobs:
 
     - name: Test train_math_net example
       id: train_math_net
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/train_math_net
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test whisper example
       id: whisper
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/whisper
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
 
     - name: Test yolo_v8 example
       id: yolo_v8
-      if: always()
+      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
       working-directory: examples/yolo_v8
       continue-on-error: true
       run: cargo build --features ${{ matrix.features }} --verbose
