@@ -37,22 +37,34 @@ jobs:
   multi-platform-test:
     name: Multi-Platform Test
     runs-on: ${{ matrix.os }}
+    needs: detect-gpu
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        features: [default, metal]
+        features: [metal, cuda]
         exclude:
           # Metal only works on macOS
           - os: ubuntu-latest
             features: metal
+          # CUDA only runs when physical GPU is available
+          - os: macos-latest
+            features: cuda
+    # Skip CUDA tests when no physical GPU is detected
+    if: matrix.features != 'cuda' || needs.detect-gpu.outputs.cuda_available == 'true'
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup CUDA
+      if: matrix.features == 'cuda' && needs.detect-gpu.outputs.cuda_available != 'true'
+      run: |
+        chmod +x ./installers/setup-nvidia.sh
+        ./installers/setup-nvidia.sh
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
@@ -81,13 +93,8 @@ jobs:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
         echo "🚀 Running Llama model with ${{ matrix.features }}..."
-        if [[ "${{ matrix.features }}" == "default" ]]; then
-          echo "✅ Using CPU backend"
-          cargo run --release
-        else
-          echo "✅ Using ${{ matrix.features }} backend"
-          cargo run --release --features ${{ matrix.features }}
-        fi
+        echo "✅ Using ${{ matrix.features }} backend"
+        cargo run --release --features ${{ matrix.features }}
 
   cuda-test:
     name: CUDA Test
