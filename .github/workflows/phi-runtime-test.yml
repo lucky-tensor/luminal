@@ -29,10 +29,19 @@ jobs:
           echo "ℹ️ No physical GPU detected"
         fi
 
-  metal-test:
-    name: Metal Test (macOS)
-    runs-on: macos-latest
+  multi-platform-test:
+    name: Multi-Platform Test
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [default, metal]
+        exclude:
+          # Metal only works on macOS
+          - os: ubuntu-latest
+            features: metal
 
     steps:
     - uses: actions/checkout@v4
@@ -58,10 +67,18 @@ jobs:
           echo "Model files already exist, skipping setup"
         fi
 
-    - name: Run phi example with Metal
+    - name: Run phi example
       working-directory: examples/phi
       timeout-minutes: 5
-      run: cargo run --release --features metal -- --gen_tokens 10
+      run: |
+        echo "🚀 Running Phi-3 model with ${{ matrix.features }}..."
+        if [[ "${{ matrix.features }}" == "default" ]]; then
+          echo "✅ Using CPU backend"
+          cargo run --release -- --gen_tokens 10
+        else
+          echo "✅ Using ${{ matrix.features }} backend"
+          cargo run --release --features ${{ matrix.features }} -- --gen_tokens 10
+        fi
 
   cuda-test:
     name: CUDA Test
