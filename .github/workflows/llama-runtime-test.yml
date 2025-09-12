@@ -146,7 +146,7 @@ jobs:
           echo "⏭️ Skipping CUDA test - no physical GPU available"
           exit 0
         fi
-        
+
         echo "🚀 Running Llama model with CUDA..."
         echo "✅ Using physical GPU acceleration"
         cargo run --release --features cuda

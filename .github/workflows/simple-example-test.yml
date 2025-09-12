@@ -22,7 +22,7 @@ jobs:
       cuda_available: ${{ steps.gpu.outputs.available }}
     steps:
     - name: Check for NVIDIA GPU
-      id: gpu  
+      id: gpu
       run: |
         if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
           echo "available=true" >> $GITHUB_OUTPUT
@@ -73,7 +73,7 @@ jobs:
     timeout-minutes: 30
     # Only run CUDA tests when explicitly requested via 'test-gpu' label or manual trigger
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
-    
+
     env:
       CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
 
@@ -89,7 +89,7 @@ jobs:
         chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
 
-    - name: Cache Cargo  
+    - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
       with:
         save-if: always()
@@ -102,7 +102,7 @@ jobs:
           echo "⏭️ Skipping CUDA test - no physical GPU available"
           exit 0
         fi
-        
+
         echo "🚀 Running CUDA example with physical GPU..."
         echo "✅ Using physical GPU acceleration"
         cargo run --manifest-path examples/simple/Cargo.toml --features cuda
