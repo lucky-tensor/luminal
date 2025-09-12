@@ -63,29 +63,36 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - name: Cache model files
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
       uses: actions/cache@v3
       with:
         path: examples/llama/setup
         key: llama-models-${{ hashFiles('examples/llama/setup/setup.sh') }}
 
     - name: Run setup script if needed
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
       working-directory: examples/llama
       run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping model setup - CUDA test will be skipped"
+          exit 0
+        fi
         if [ ! -f setup/*.gguf ]; then
           bash ./setup/setup.sh
         else
           echo "Model files already exist, skipping setup"
         fi
 
-    - name: Run llama example
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
+    - name: Run llama example  
+      id: llama-test
       working-directory: examples/llama
       timeout-minutes: 20
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
         echo "🚀 Running Llama model with ${{ matrix.features }}..."
         if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
           echo "✅ Using physical GPU acceleration"
@@ -93,3 +100,4 @@ jobs:
           echo "✅ Using ${{ matrix.features }} acceleration"
         fi
         cargo run --release --features ${{ matrix.features }}
+        echo "conclusion=success" >> $GITHUB_OUTPUT

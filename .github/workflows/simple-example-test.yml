@@ -84,14 +84,17 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - name: Run simple example with CUDA
+      id: cuda-test
       timeout-minutes: 10
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        echo "🚀 Running CUDA example..."
-        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
-          echo "✅ Using physical GPU acceleration"
-        else
-          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
+        if [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
         fi
+        echo "🚀 Running CUDA example..."
+        echo "✅ Using physical GPU acceleration"
         cargo run --manifest-path examples/simple/Cargo.toml --features cuda
+        echo "conclusion=success" >> $GITHUB_OUTPUT

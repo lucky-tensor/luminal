@@ -99,6 +99,10 @@ jobs:
     - name: Run setup script if needed
       working-directory: examples/phi
       run: |
+        if [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping model setup - CUDA test will be skipped"
+          exit 0
+        fi
         if [ ! -f setup/*.gguf ]; then
           bash ./setup/setup.sh
         else
@@ -106,15 +110,18 @@ jobs:
         fi
 
     - name: Run phi example with CUDA
+      id: cuda-test
       working-directory: examples/phi
       timeout-minutes: 5
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        echo "🚀 Running Phi-3 model with CUDA..."
-        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
-          echo "✅ Using physical GPU acceleration"
-        else
-          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
+        if [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
         fi
+        echo "🚀 Running Phi-3 model with CUDA..."
+        echo "✅ Using physical GPU acceleration"
         cargo run --release --features cuda -- --gen_tokens 10
+        echo "conclusion=success" >> $GITHUB_OUTPUT

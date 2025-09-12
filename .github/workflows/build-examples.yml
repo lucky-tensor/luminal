@@ -68,63 +68,154 @@ jobs:
       id: llama
       working-directory: examples/llama
       continue-on-error: true
-      if: matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true'
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test moondream example
       id: moondream
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/moondream
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test phi example
       id: phi
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/phi
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test qwen example
       id: qwen
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/qwen
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test simple example (CPU only)
       id: simple
       if: always()
       working-directory: examples/simple
       continue-on-error: true
-      run: cargo build --verbose
+      run: |
+        if cargo build --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test train_math_net example
       id: train_math_net
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/train_math_net
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test whisper example
       id: whisper
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/whisper
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Test yolo_v8 example
       id: yolo_v8
-      if: always() && (matrix.features != 'cuda' || steps.gpu-check.outputs.gpu_available == 'true')
+      if: always()
       working-directory: examples/yolo_v8
       continue-on-error: true
-      run: cargo build --features ${{ matrix.features }} --verbose
+      run: |
+        if [ "${{ matrix.features }}" == "cuda" ] && [ "${{ steps.gpu-check.outputs.gpu_available }}" != "true" ]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          echo "conclusion=skipped" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if cargo build --features ${{ matrix.features }} --verbose; then
+          echo "conclusion=success" >> $GITHUB_OUTPUT
+        else
+          echo "conclusion=failure" >> $GITHUB_OUTPUT
+          exit 1
+        fi
 
     - name: Save results as artifact
       if: always()
       run: |
         mkdir -p results
-        echo "${{ matrix.os }},${{ matrix.rust }},${{ matrix.features }},${{ steps.llama.outcome }},${{ steps.moondream.outcome }},${{ steps.phi.outcome }},${{ steps.qwen.outcome }},${{ steps.simple.outcome }},${{ steps.train_math_net.outcome }},${{ steps.whisper.outcome }},${{ steps.yolo_v8.outcome }}" > results/matrix-${{ strategy.job-index }}.csv
+        # Use custom conclusions if available, fall back to step outcomes
+        llama_result="${{ steps.llama.outputs.conclusion || steps.llama.outcome }}"
+        moondream_result="${{ steps.moondream.outputs.conclusion || steps.moondream.outcome }}"
+        phi_result="${{ steps.phi.outputs.conclusion || steps.phi.outcome }}"
+        qwen_result="${{ steps.qwen.outputs.conclusion || steps.qwen.outcome }}"
+        simple_result="${{ steps.simple.outcome }}"
+        train_math_net_result="${{ steps.train_math_net.outputs.conclusion || steps.train_math_net.outcome }}"
+        whisper_result="${{ steps.whisper.outputs.conclusion || steps.whisper.outcome }}"
+        yolo_v8_result="${{ steps.yolo_v8.outputs.conclusion || steps.yolo_v8.outcome }}"
+        echo "${{ matrix.os }},${{ matrix.rust }},${{ matrix.features }},$llama_result,$moondream_result,$phi_result,$qwen_result,$simple_result,$train_math_net_result,$whisper_result,$yolo_v8_result" > results/matrix-${{ strategy.job-index }}.csv
     
     - name: Upload results
       uses: actions/upload-artifact@v4
@@ -137,18 +228,31 @@ jobs:
       if: always()
       run: |
         failed=false
-        ${{ steps.llama.outcome == 'failure' }} && failed=true
-        ${{ steps.moondream.outcome == 'failure' }} && failed=true
-        ${{ steps.phi.outcome == 'failure' }} && failed=true
-        ${{ steps.qwen.outcome == 'failure' }} && failed=true
-        ${{ steps.simple.outcome == 'failure' }} && failed=true
-        ${{ steps.train_math_net.outcome == 'failure' }} && failed=true
-        ${{ steps.whisper.outcome == 'failure' }} && failed=true
-        ${{ steps.yolo_v8.outcome == 'failure' }} && failed=true
+        
+        # Check each test result using our custom conclusions
+        llama_result="${{ steps.llama.outputs.conclusion || steps.llama.outcome }}"
+        moondream_result="${{ steps.moondream.outputs.conclusion || steps.moondream.outcome }}"
+        phi_result="${{ steps.phi.outputs.conclusion || steps.phi.outcome }}"
+        qwen_result="${{ steps.qwen.outputs.conclusion || steps.qwen.outcome }}"
+        simple_result="${{ steps.simple.outputs.conclusion || steps.simple.outcome }}"
+        train_math_net_result="${{ steps.train_math_net.outputs.conclusion || steps.train_math_net.outcome }}"
+        whisper_result="${{ steps.whisper.outputs.conclusion || steps.whisper.outcome }}"
+        yolo_v8_result="${{ steps.yolo_v8.outputs.conclusion || steps.yolo_v8.outcome }}"
+        
+        [ "$llama_result" = "failure" ] && failed=true && echo "❌ llama test failed"
+        [ "$moondream_result" = "failure" ] && failed=true && echo "❌ moondream test failed"
+        [ "$phi_result" = "failure" ] && failed=true && echo "❌ phi test failed"
+        [ "$qwen_result" = "failure" ] && failed=true && echo "❌ qwen test failed"
+        [ "$simple_result" = "failure" ] && failed=true && echo "❌ simple test failed"
+        [ "$train_math_net_result" = "failure" ] && failed=true && echo "❌ train_math_net test failed"
+        [ "$whisper_result" = "failure" ] && failed=true && echo "❌ whisper test failed"
+        [ "$yolo_v8_result" = "failure" ] && failed=true && echo "❌ yolo_v8 test failed"
         
         if [ "$failed" = "true" ]; then
-          echo "Some tests failed in this matrix"
+          echo "🚨 Some tests failed in this matrix (${{ matrix.os }}, ${{ matrix.rust }}, ${{ matrix.features }})"
           exit 1
+        else
+          echo "✅ All tests passed or skipped in this matrix (${{ matrix.os }}, ${{ matrix.rust }}, ${{ matrix.features }})"
         fi
 
   summary:
@@ -173,15 +277,15 @@ jobs:
         for csv_file in artifacts/*/matrix-*.csv; do
           if [ -f "$csv_file" ]; then
             while IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8; do
-              # Convert outcomes to emojis
-              llama_emoji=$([ "$llama" = "success" ] && echo "✅" || echo "❌")
-              moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || echo "❌")
-              phi_emoji=$([ "$phi" = "success" ] && echo "✅" || echo "❌")
-              qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || echo "❌")
-              simple_emoji=$([ "$simple" = "success" ] && echo "✅" || echo "❌")
-              train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || echo "❌")
-              whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || echo "❌")
-              yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || echo "❌")
+              # Convert outcomes to emojis (success=✅, failure=❌, skipped=⏭️)
+              llama_emoji=$([ "$llama" = "success" ] && echo "✅" || ([ "$llama" = "skipped" ] && echo "⏭️" || echo "❌"))
+              moondream_emoji=$([ "$moondream" = "success" ] && echo "✅" || ([ "$moondream" = "skipped" ] && echo "⏭️" || echo "❌"))
+              phi_emoji=$([ "$phi" = "success" ] && echo "✅" || ([ "$phi" = "skipped" ] && echo "⏭️" || echo "❌"))
+              qwen_emoji=$([ "$qwen" = "success" ] && echo "✅" || ([ "$qwen" = "skipped" ] && echo "⏭️" || echo "❌"))
+              simple_emoji=$([ "$simple" = "success" ] && echo "✅" || ([ "$simple" = "skipped" ] && echo "⏭️" || echo "❌"))
+              train_math_net_emoji=$([ "$train_math_net" = "success" ] && echo "✅" || ([ "$train_math_net" = "skipped" ] && echo "⏭️" || echo "❌"))
+              whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || ([ "$whisper" = "skipped" ] && echo "⏭️" || echo "❌"))
+              yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || ([ "$yolo_v8" = "skipped" ] && echo "⏭️" || echo "❌"))
               
               echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
             done < "$csv_file"
