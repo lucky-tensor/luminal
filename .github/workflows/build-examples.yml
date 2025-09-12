@@ -20,7 +20,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         rust: [1.85, stable, beta]
-        features: [cpu, cuda, metal]
+        features: [default, cuda, metal]
         exclude:
           # Metal only works on macOS
           - os: ubuntu-latest
@@ -59,8 +59,14 @@ jobs:
             
             echo "🔨 Building $example_name with ${{ matrix.features }} features..."
             
-            # Build all examples with the specified features
-            if cargo build --manifest-path "$example_dir/Cargo.toml" --features ${{ matrix.features }} --verbose; then
+            # Build all examples with the specified features (or no features for default)
+            if [[ "${{ matrix.features }}" == "default" ]]; then
+              build_cmd="cargo build --manifest-path \"$example_dir/Cargo.toml\" --verbose"
+            else
+              build_cmd="cargo build --manifest-path \"$example_dir/Cargo.toml\" --features ${{ matrix.features }} --verbose"
+            fi
+            
+            if eval "$build_cmd"; then
               passed_examples+=("$example_name")
               echo "✅ $example_name passed"
             else
@@ -144,20 +150,20 @@ jobs:
       run: |
         echo "# 📊 Build Results Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| OS | Rust | Features | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
+        echo "| OS | Rust | Backend | llama | moondream | phi | qwen | simple | train_math_net | whisper | yolo_v8 |" >> $GITHUB_STEP_SUMMARY
         echo "|----|------|----------|-------|-----------|-----|------|--------|----------------|---------|---------|" >> $GITHUB_STEP_SUMMARY
         
         # Process all CSV files
         for csv_file in artifacts/*/matrix-*.csv; do
           if [ -f "$csv_file" ]; then
-            while IFS=',' read -r os rust features llama moondream phi qwen simple train_math_net whisper yolo_v8; do
-              # Handle OS/feature incompatibility cases
-              if [[ "$os" == "macos-latest" && "$features" == "cuda" ]]; then
+            while IFS=',' read -r os rust backend llama moondream phi qwen simple train_math_net whisper yolo_v8; do
+              # Handle OS/backend incompatibility cases
+              if [[ "$os" == "macos-latest" && "$backend" == "cuda" ]]; then
                 # CUDA doesn't work on macOS - mark all as N/A
-                echo "| $os | $rust | $features | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
-              elif [[ "$os" == "ubuntu-latest" && "$features" == "metal" ]]; then
+                echo "| $os | $rust | $backend | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
+              elif [[ "$os" == "ubuntu-latest" && "$backend" == "metal" ]]; then
                 # Metal doesn't work on Ubuntu - mark all as N/A  
-                echo "| $os | $rust | $features | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
+                echo "| $os | $rust | $backend | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
               else
                 # Convert outcomes to emojis: success=✅, failure=❌, skip=⏭️
                 llama_emoji=$([ "$llama" = "success" ] && echo "✅" || [ "$llama" = "skip" ] && echo "⏭️" || echo "❌")
@@ -169,7 +175,7 @@ jobs:
                 whisper_emoji=$([ "$whisper" = "success" ] && echo "✅" || [ "$whisper" = "skip" ] && echo "⏭️" || echo "❌")
                 yolo_v8_emoji=$([ "$yolo_v8" = "success" ] && echo "✅" || [ "$yolo_v8" = "skip" ] && echo "⏭️" || echo "❌")
                 
-                echo "| $os | $rust | $features | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
+                echo "| $os | $rust | $backend | $llama_emoji | $moondream_emoji | $phi_emoji | $qwen_emoji | $simple_emoji | $train_math_net_emoji | $whisper_emoji | $yolo_v8_emoji |" >> $GITHUB_STEP_SUMMARY
               fi
             done < "$csv_file"
           fi
