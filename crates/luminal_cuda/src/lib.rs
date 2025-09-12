@@ -29,6 +29,51 @@ use std::{collections::hash_map::DefaultHasher, fmt::Write, hash::Hasher, sync::
 
 use luminal::{op::InputTensor, prelude::*};
 
+/// Find the CUDA include path by checking common locations
+fn find_cuda_include_path() -> String {
+    // Check environment variable first
+    if let Ok(cuda_home) = std::env::var("CUDA_HOME") {
+        let path = format!("{}/include", cuda_home);
+        if std::path::Path::new(&path).exists() {
+            return path;
+        }
+    }
+    
+    // Check common CUDA installation paths
+    let common_paths = [
+        "/usr/local/cuda/include",
+        "/usr/local/cuda/targets/x86_64-linux/include",
+        "/opt/cuda/include",
+        "/usr/include/cuda",
+        "/usr/include",
+    ];
+    
+    // Look for cuda_fp16.h specifically
+    for path in &common_paths {
+        let cuda_fp16_path = format!("{}/cuda_fp16.h", path);
+        if std::path::Path::new(&cuda_fp16_path).exists() {
+            return path.to_string();
+        }
+    }
+    
+    // Try to find CUDA installation dynamically
+    if let Ok(output) = std::process::Command::new("find")
+        .args(&["/usr/local", "-name", "cuda_fp16.h", "-type", "f"])
+        .output()
+    {
+        if let Ok(stdout) = String::from_utf8(output.stdout) {
+            if let Some(line) = stdout.lines().next() {
+                if let Some(parent) = std::path::Path::new(line).parent() {
+                    return parent.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+    
+    // Fallback to original path
+    "/usr/include".to_string()
+}
+
 /// Compile graphs to run on CUDA GPUs in supported data formats
 pub type CudaCompiler<T> = (
     prim::PrimitiveCompiler<T>,
@@ -242,7 +287,7 @@ fn compile_and_load_kernel(mut code: String, device: &Arc<CudaContext>) -> CudaF
             compile_ptx_with_opts(
                 code,
                 CompileOptions {
-                    include_paths: vec!["/usr/include".into()],
+                    include_paths: vec![find_cuda_include_path()],
                     options: vec![
                         "--gpu-architecture=compute_75".into(),
                         "--relocatable-device-code=false".into(),
