@@ -7,7 +7,28 @@ on:
     branches: [ "main", "*dev" ]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  detect-gpu:
+    name: GPU Detection
+    runs-on: ubuntu-latest
+    outputs:
+      cuda_available: ${{ steps.gpu.outputs.available }}
+    steps:
+    - name: Check for NVIDIA GPU
+      id: gpu
+      run: |
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "✅ Physical GPU detected"
+          nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+        else
+          echo "available=false" >> $GITHUB_OUTPUT  
+          echo "ℹ️ No physical GPU detected"
+        fi
+
   metal-test:
     name: Metal Test (macOS)
     runs-on: macos-latest
@@ -17,17 +38,13 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Setup Rust cache
+    - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
 
     - name: Cache model files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: examples/phi/setup
         key: phi-models-${{ hashFiles('examples/phi/setup/setup.sh') }}
@@ -47,51 +64,33 @@ jobs:
       run: cargo run --release --features metal -- --gen_tokens 10
 
   cuda-test:
-    name: CUDA Test (GPU Required)
-    # Use GPU-powered runners when available, otherwise skip
+    name: CUDA Test
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
+    needs: detect-gpu
     timeout-minutes: 30
     # Only run CUDA tests when explicitly requested or on workflow dispatch
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
+
+    env:
+      CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Check for GPU hardware
-      id: gpu-check
+    - name: Setup CUDA
+      if: env.CUDA_AVAILABLE != 'true'
       run: |
-        if command -v nvidia-smi &> /dev/null; then
-          if nvidia-smi &> /dev/null; then
-            echo "gpu_available=true" >> $GITHUB_OUTPUT
-            echo "✅ GPU detected:"
-            nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
-          else
-            echo "gpu_available=false" >> $GITHUB_OUTPUT
-            echo "⚠️  nvidia-smi found but no GPU detected"
-          fi
-        else
-          echo "gpu_available=false" >> $GITHUB_OUTPUT
-          echo "ℹ️  No GPU detected, will install CUDA for compilation only"
-        fi
-
-    - name: Install CUDA and NVIDIA drivers
-      if: steps.gpu-check.outputs.gpu_available != 'true'
-      run: |
-        chmod +x ./installers/setup-nvidia.sh
+        chmod +x ./installers/setup-nvidia.sh  
         ./installers/setup-nvidia.sh
 
-    - name: Setup Rust cache
+    - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
 
     - name: Cache model files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: examples/phi/setup
         key: phi-models-${{ hashFiles('examples/phi/setup/setup.sh') }}
@@ -99,6 +98,10 @@ jobs:
     - name: Run setup script if needed
       working-directory: examples/phi
       run: |
+        if [[ "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
+          echo "⏭️ Skipping model setup - CUDA test will be skipped"
+          exit 0
+        fi
         if [ ! -f setup/*.gguf ]; then
           bash ./setup/setup.sh
         else
@@ -111,10 +114,11 @@ jobs:
       env:
         LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
       run: |
-        echo "🚀 Running Phi-3 model with CUDA..."
-        if [ "${{ steps.gpu-check.outputs.gpu_available }}" == "true" ]; then
-          echo "✅ Using physical GPU acceleration"
-        else
-          echo "⚠️  Running in CPU simulation mode (no physical GPU)"
+        if [[ "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          exit 0
         fi
+        
+        echo "🚀 Running Phi-3 model with CUDA..."
+        echo "✅ Using physical GPU acceleration"
         cargo run --release --features cuda -- --gen_tokens 10

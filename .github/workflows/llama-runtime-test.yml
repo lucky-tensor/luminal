@@ -1,0 +1,104 @@
+name: Llama Runtime Test
+
+on:
+  push:
+    branches: [ "main", "*dev", "ci*" ]
+  pull_request:
+    branches: [ "main", "*dev" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  detect-gpu:
+    name: GPU Detection
+    runs-on: ubuntu-latest
+    outputs:
+      cuda_available: ${{ steps.gpu.outputs.available }}
+    steps:
+    - name: Check for NVIDIA GPU
+      id: gpu
+      run: |
+        if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "✅ Physical GPU detected"
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+        else
+          echo "available=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No physical GPU detected"  
+        fi
+
+  runtime-test:
+    name: Runtime Test
+    runs-on: ${{ matrix.os }}
+    needs: detect-gpu
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [cuda, metal]
+        exclude:
+          # Metal only works on macOS
+          - os: ubuntu-latest
+            features: metal
+          # CUDA only works on Ubuntu (for CI)
+          - os: macos-latest
+            features: cuda
+
+    env:
+      CUDA_AVAILABLE: ${{ needs.detect-gpu.outputs.cuda_available }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup CUDA
+      if: matrix.features == 'cuda' && env.CUDA_AVAILABLE != 'true'
+      run: |
+        chmod +x ./installers/setup-nvidia.sh
+        ./installers/setup-nvidia.sh
+
+    - name: Cache Cargo
+      uses: Swatinem/rust-cache@v2
+
+    - name: Cache model files
+      uses: actions/cache@v4
+      with:
+        path: examples/llama/setup
+        key: llama-models-${{ hashFiles('examples/llama/setup/setup.sh') }}
+
+    - name: Run setup script if needed
+      working-directory: examples/llama
+      run: |
+        if [[ "${{ matrix.features }}" == "cuda" && "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
+          echo "⏭️ Skipping model setup - CUDA test will be skipped"
+          exit 0
+        fi
+        if [ ! -f setup/*.gguf ]; then
+          bash ./setup/setup.sh
+        else
+          echo "Model files already exist, skipping setup"
+        fi
+
+    - name: Run llama example
+      working-directory: examples/llama
+      timeout-minutes: 15
+      env:
+        LD_LIBRARY_PATH: "/usr/local/cuda-12.2/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+      run: |
+        if [[ "${{ matrix.features }}" == "cuda" && "${{ env.CUDA_AVAILABLE }}" != "true" ]]; then
+          echo "⏭️ Skipping CUDA test - no physical GPU available"
+          exit 0
+        fi
+        
+        echo "🚀 Running Llama model with ${{ matrix.features }}..."
+        if [[ "${{ env.CUDA_AVAILABLE }}" == "true" ]]; then
+          echo "✅ Using physical GPU acceleration"
+        else
+          echo "✅ Using ${{ matrix.features }} acceleration"
+        fi
+        cargo run --release --features ${{ matrix.features }}
