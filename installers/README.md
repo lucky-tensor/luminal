@@ -29,7 +29,13 @@ chmod +x installers/setup-nvidia.sh
 
 **Environment Variables:**
 - `SKIP_CLEANUP=true` - Skip removal of existing NVIDIA packages
+- `FORCE_CI_MODE=true` - Force CI mode (skip DKMS installation)
 - `CUDA_HOME` - Override CUDA installation path detection
+
+**CI/Headless Environment Support:**
+- Automatically detects CI environments (GitHub Actions, etc.)
+- Skips DKMS installation when EFI is not available
+- Provides appropriate error messages for headless systems
 
 For detailed documentation, see [NVIDIA_SETUP.md](../NVIDIA_SETUP.md).
 

@@ -62,11 +62,26 @@ install_nvidia_drivers() {
     # Update package lists
     sudo apt-get update
     
-    # Install drivers
-    sudo apt-get install -y \
-        nvidia-driver-${NVIDIA_DRIVER_VERSION} \
-        nvidia-dkms-${NVIDIA_DRIVER_VERSION} \
-        nvidia-utils-${NVIDIA_DRIVER_VERSION}
+    # Check if we're in a CI environment or headless system
+    if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ "${FORCE_CI_MODE:-}" = "true" ] || [ ! -d /sys/firmware/efi ]; then
+        echo "🤖 Detected CI/headless environment, installing drivers without DKMS..."
+        
+        # Install drivers without DKMS in CI environments
+        sudo apt-get install -y \
+            nvidia-driver-${NVIDIA_DRIVER_VERSION} \
+            nvidia-utils-${NVIDIA_DRIVER_VERSION}
+        
+        # Skip DKMS installation as it's not needed for CUDA compilation
+        echo "⚠️  Skipping nvidia-dkms installation (not required for CUDA development)"
+    else
+        echo "🖥️  Installing full driver stack with DKMS..."
+        
+        # Install full drivers including DKMS for physical machines
+        sudo apt-get install -y \
+            nvidia-driver-${NVIDIA_DRIVER_VERSION} \
+            nvidia-dkms-${NVIDIA_DRIVER_VERSION} \
+            nvidia-utils-${NVIDIA_DRIVER_VERSION}
+    fi
     
     echo "✅ NVIDIA drivers installed"
 }
@@ -74,6 +89,50 @@ install_nvidia_drivers() {
 # Function to install CUDA toolkit
 install_cuda_toolkit() {
     echo "🔧 Installing CUDA toolkit ${CUDA_VERSION_FULL}..."
+    
+    # Try method 1: Use NVIDIA's installer directly
+    if install_cuda_direct; then
+        echo "✅ CUDA toolkit installed using direct method"
+        return 0
+    fi
+    
+    echo "⚠️  Direct installation failed, trying repository method..."
+    
+    # Method 2: Repository installation with conflict resolution
+    install_cuda_repository
+}
+
+# Method 1: Direct CUDA installation without repository conflicts
+install_cuda_direct() {
+    echo "🔧 Attempting direct CUDA installation..."
+    
+    # Download the CUDA installer directly
+    local cuda_installer="cuda_${CUDA_VERSION_FULL}_535.104.12_linux.run"
+    local cuda_url="https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION_FULL}/local_installers/${cuda_installer}"
+    
+    if [ ! -f "$cuda_installer" ]; then
+        echo "📥 Downloading CUDA ${CUDA_VERSION_FULL} installer..."
+        wget -q --show-progress "$cuda_url" || {
+            echo "⚠️  Failed to download CUDA installer"
+            return 1
+        }
+        chmod +x "$cuda_installer"
+    fi
+    
+    echo "📦 Installing CUDA toolkit (this may take a few minutes)..."
+    
+    # Install CUDA toolkit only (skip drivers since we already installed them)
+    sudo sh "$cuda_installer" --silent --toolkit --no-man-page || {
+        echo "⚠️  Direct CUDA installation failed"
+        return 1
+    }
+    
+    return 0
+}
+
+# Method 2: Repository-based installation with conflict handling
+install_cuda_repository() {
+    echo "🔧 Installing CUDA from repository..."
     
     # Download and install CUDA keyring
     local keyring_file="cuda-keyring_1.1-1_all.deb"
@@ -83,30 +142,49 @@ install_cuda_toolkit() {
         echo "📥 Downloading CUDA keyring..."
         wget -q "$keyring_url" || {
             echo "❌ Failed to download CUDA keyring"
-            exit 1
+            return 1
         }
     fi
     
     sudo dpkg -i "$keyring_file" || {
         echo "❌ Failed to install CUDA keyring"
-        exit 1
+        return 1
     }
+    
+    # Hold our installed driver version to prevent conflicts
+    echo "🔒 Holding NVIDIA driver version to prevent conflicts..."
+    sudo apt-mark hold nvidia-driver-${NVIDIA_DRIVER_VERSION} || echo "⚠️  Could not hold driver version"
+    
+    # Create apt preferences to prevent CUDA from upgrading our drivers
+    echo "🔒 Setting APT preferences to prevent driver conflicts..."
+    sudo tee /etc/apt/preferences.d/nvidia-driver > /dev/null << EOF
+Package: nvidia-driver-*
+Pin: version 535.*
+Pin-Priority: 1001
+
+Package: cuda-drivers*
+Pin: version *
+Pin-Priority: -1
+EOF
     
     # Update package lists
     sudo apt-get update
     
-    # Install CUDA toolkit components
-    echo "📦 Installing CUDA toolkit components..."
-    sudo apt-get install -y \
-        cuda-compiler-${CUDA_VERSION} \
-        cuda-libraries-dev-${CUDA_VERSION} \
-        cuda-driver-dev-${CUDA_VERSION} \
-        cuda-cudart-dev-${CUDA_VERSION} \
-        cuda-runtime-${CUDA_VERSION} \
-        cuda-nvrtc-dev-${CUDA_VERSION} \
-        cuda-nvml-dev-${CUDA_VERSION}
+    # Install only the essential CUDA development components
+    echo "📦 Installing minimal CUDA development components..."
     
-    echo "✅ CUDA toolkit installed"
+    # Try to install just the compiler and headers we need
+    sudo apt-get install -y --no-install-recommends \
+        cuda-nvcc-${CUDA_VERSION} \
+        cuda-cudart-dev-${CUDA_VERSION} \
+        cuda-nvrtc-dev-${CUDA_VERSION} || {
+        
+        echo "❌ Failed to install CUDA from repository"
+        return 1
+    }
+    
+    echo "✅ CUDA toolkit installed from repository"
+    return 0
 }
 
 # Function to setup library paths
@@ -136,9 +214,13 @@ verify_installation() {
     # Check nvidia-smi
     if nvidia-smi &> /dev/null; then
         echo "✅ nvidia-smi working"
-        nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+        nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || echo "⚠️  nvidia-smi available but no GPU detected"
     else
-        echo "⚠️  nvidia-smi not available (this is expected in CI environments without GPU)"
+        if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ "${FORCE_CI_MODE:-}" = "true" ]; then
+            echo "ℹ️  nvidia-smi not available (expected in CI environments without physical GPU)"
+        else
+            echo "⚠️  nvidia-smi not available (may indicate driver installation issues)"
+        fi
     fi
     
     # Check nvcc
@@ -180,6 +262,13 @@ main() {
     echo "   - NVIDIA Driver: ${NVIDIA_DRIVER_VERSION}"
     echo "   - CUDA Version: ${CUDA_VERSION_FULL}"
     echo "   - Ubuntu Version: ${UBUNTU_VERSION}"
+    
+    # Show environment detection
+    if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ "${FORCE_CI_MODE:-}" = "true" ]; then
+        echo "   - Environment: CI/Headless"
+    else
+        echo "   - Environment: Desktop/Physical"
+    fi
     echo ""
     
     # Skip cleanup if SKIP_CLEANUP is set
