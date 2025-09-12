@@ -1,5 +1,10 @@
 name: Phi Runtime Test
 
+# Tests the Phi-3 example with model download and execution (faster than Llama)
+# - Multi-platform: Ubuntu (CPU/default), macOS (CPU/Metal)
+# - CUDA testing: Only on GPU runners when explicitly requested or workflow_dispatch
+# - Uses --gen_tokens 10 for faster execution, includes model caching
+
 on:
   push:
     branches: [ "main", "*dev", "ci*" ]
@@ -29,10 +34,19 @@ jobs:
           echo "ℹ️ No physical GPU detected"
         fi
 
-  metal-test:
-    name: Metal Test (macOS)
-    runs-on: macos-latest
+  multi-platform-test:
+    name: Multi-Platform Test
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [default, metal]
+        exclude:
+          # Metal only works on macOS
+          - os: ubuntu-latest
+            features: metal
 
     steps:
     - uses: actions/checkout@v4
@@ -42,6 +56,8 @@ jobs:
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4
@@ -58,17 +74,25 @@ jobs:
           echo "Model files already exist, skipping setup"
         fi
 
-    - name: Run phi example with Metal
+    - name: Run phi example
       working-directory: examples/phi
       timeout-minutes: 5
-      run: cargo run --release --features metal -- --gen_tokens 10
+      run: |
+        echo "🚀 Running Phi-3 model with ${{ matrix.features }}..."
+        if [[ "${{ matrix.features }}" == "default" ]]; then
+          echo "✅ Using CPU backend"
+          cargo run --release -- --gen_tokens 10
+        else
+          echo "✅ Using ${{ matrix.features }} backend"
+          cargo run --release --features ${{ matrix.features }} -- --gen_tokens 10
+        fi
 
   cuda-test:
     name: CUDA Test
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
     needs: detect-gpu
     timeout-minutes: 30
-    # Only run CUDA tests when explicitly requested or on workflow dispatch
+    # Only run CUDA tests when explicitly requested via 'test-gpu' label or manual trigger
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
 
     env:
@@ -83,11 +107,13 @@ jobs:
     - name: Setup CUDA
       if: env.CUDA_AVAILABLE != 'true'
       run: |
-        chmod +x ./installers/setup-nvidia.sh  
+        chmod +x ./installers/setup-nvidia.sh
         ./installers/setup-nvidia.sh
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Cache model files
       uses: actions/cache@v4

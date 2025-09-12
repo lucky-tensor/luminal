@@ -1,5 +1,9 @@
 name: Simple Example Test
 
+# Tests the simple example across platforms with GPU detection
+# - Multi-platform: Ubuntu (CPU/default), macOS (CPU/Metal)
+# - CUDA testing: Only on GPU runners when explicitly requested or workflow_dispatch
+
 on:
   push:
     branches: [ "main", "*dev", "ci*" ]
@@ -12,7 +16,7 @@ env:
 
 jobs:
   detect-gpu:
-    name: GPU Detection  
+    name: GPU Detection
     runs-on: ubuntu-latest
     outputs:
       cuda_available: ${{ steps.gpu.outputs.available }}
@@ -37,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        features: [cpu, metal]
+        features: [default, metal]
         exclude:
           # Metal only works on macOS
           - os: ubuntu-latest
@@ -51,16 +55,23 @@ jobs:
 
     - name: Cache Cargo
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Run simple example
-      run: cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
+      run: |
+        if [[ "${{ matrix.features }}" == "default" ]]; then
+          cargo run --manifest-path examples/simple/Cargo.toml
+        else
+          cargo run --manifest-path examples/simple/Cargo.toml --features ${{ matrix.features }}
+        fi
 
   cuda-test:
     name: CUDA Test
     runs-on: ${{ github.repository_owner == 'lucky-tensor' && 'gpu-runners' || 'ubuntu-latest' }}
     needs: detect-gpu
     timeout-minutes: 30
-    # Only run CUDA tests when explicitly requested or on workflow dispatch
+    # Only run CUDA tests when explicitly requested via 'test-gpu' label or manual trigger
     if: contains(github.event.pull_request.labels.*.name, 'test-gpu') || github.event_name == 'workflow_dispatch'
     
     env:
@@ -80,6 +91,8 @@ jobs:
 
     - name: Cache Cargo  
       uses: Swatinem/rust-cache@v2
+      with:
+        save-if: always()
 
     - name: Run simple example with CUDA
       env:
