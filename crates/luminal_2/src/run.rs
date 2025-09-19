@@ -3,7 +3,8 @@ use itertools::Itertools;
 #[cfg(feature = "cuda")]
 use {
     cudarc::{driver::*, nvrtc::CompileOptions},
-    std::{fs::OpenOptions, io::Write},
+    std::{fs::OpenOptions, io::Write, sync::Mutex},
+    rayon::prelude::*,
 };
 
 use luminal::{
@@ -24,7 +25,8 @@ use std::{fs::File, io::Read};
 use {
     crate::{Buffer, Device, Function},
     objc2_metal::{MTLBuffer, MTLDevice},
-    std::{ffi::c_void, ptr::NonNull},
+    std::{ffi::c_void, ptr::NonNull, sync::Mutex},
+    rayon::prelude::*,
 };
 
 use crate::Kernel;
@@ -95,25 +97,36 @@ pub fn compile_kernels(
     kernels: &StableGraph<Kernel, (usize, usize)>,
 ) -> FxHashMap<String, CudaFunction> {
     let ctx = cudarc::driver::CudaContext::new(0).unwrap();
-    let mut compiled = FxHashMap::default();
 
     // Open (or create) the log file, appending logs to it
     let log_path = "kernel_log.txt";
-    let mut log_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true) // overwrite on each run
-        .open(log_path)
-        .expect("Failed to open kernel log file");
+    let log_file = Mutex::new(
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // overwrite on each run
+            .open(log_path)
+            .expect("Failed to open kernel log file")
+    );
 
-    for kernel in kernels.node_weights() {
-        if !compiled.contains_key(&kernel.code)
-            && kernel.code != "Inputs"
-            && kernel.code != "Outputs"
-        {
-            writeln!(log_file, "Compiling kernel:\n{}\n", kernel.code)
-                .expect("Failed to write to kernel log file");
+    // Collect unique kernels to compile
+    let unique_kernels: Vec<_> = kernels
+        .node_weights()
+        .filter(|kernel| kernel.code != "Inputs" && kernel.code != "Outputs")
+        .collect();
 
+    // Parallel compilation of kernels
+    let compiled_results: Vec<_> = unique_kernels
+        .par_iter()
+        .map(|kernel| {
+            // Log kernel compilation (thread-safe)
+            {
+                let mut log = log_file.lock().unwrap();
+                writeln!(log, "Compiling kernel:\n{}\n", kernel.code)
+                    .expect("Failed to write to kernel log file");
+            }
+
+            // Compile PTX (CPU-intensive, can be done in parallel)
             let ptx = cudarc::nvrtc::compile_ptx_with_opts(
                 &kernel.code,
                 CompileOptions {
@@ -127,11 +140,21 @@ pub fn compile_kernels(
                 },
             )
             .unwrap();
+
+            (kernel.code.clone(), ptx)
+        })
+        .collect();
+
+    // Sequential module loading (CUDA context is not thread-safe)
+    let mut compiled = FxHashMap::default();
+    for (code, ptx) in compiled_results {
+        if !compiled.contains_key(&code) {
             let module = ctx.load_module(ptx).unwrap();
             let k = module.load_function("kernel_name").unwrap();
-            compiled.insert(kernel.code.clone(), k);
+            compiled.insert(code, k);
         }
     }
+
     compiled
 }
 
@@ -142,21 +165,40 @@ pub fn compile_kernels(
     use objc2_metal::MTLCreateSystemDefaultDevice;
 
     let device = MTLCreateSystemDefaultDevice().unwrap();
-    let mut compiled = FxHashMap::default();
-    for kernel in kernels.node_weights() {
-        if !compiled.contains_key(&kernel.code)
-            && kernel.code != "Inputs"
-            && kernel.code != "Outputs"
-        {
-            use objc2_foundation::{NSString, ns_string};
-            use objc2_metal::{MTLDevice, MTLLibrary};
-            let lib = device
+
+    // Collect unique kernels to compile
+    let unique_kernels: Vec<_> = kernels
+        .node_weights()
+        .filter(|kernel| kernel.code != "Inputs" && kernel.code != "Outputs")
+        .collect();
+
+    // Parallel compilation of Metal libraries
+    let compiled_results: Vec<_> = unique_kernels
+        .par_iter()
+        .map(|kernel| {
+            use objc2_foundation::NSString;
+            use objc2_metal::MTLDevice;
+
+            // Each thread needs its own device for Metal compilation
+            let thread_device = MTLCreateSystemDefaultDevice().unwrap();
+            let lib = thread_device
                 .newLibraryWithSource_options_error(&NSString::from_str(&kernel.code), None)
                 .unwrap();
+
+            (kernel.code.clone(), lib)
+        })
+        .collect();
+
+    // Sequential function extraction (Metal library objects are thread-safe for reading)
+    let mut compiled = FxHashMap::default();
+    for (code, lib) in compiled_results {
+        if !compiled.contains_key(&code) {
+            use objc2_foundation::ns_string;
             let f = lib.newFunctionWithName(ns_string!("kernel_name")).unwrap();
-            compiled.insert(kernel.code.clone(), f);
+            compiled.insert(code, f);
         }
     }
+
     compiled
 }
 
