@@ -1,0 +1,35 @@
+[package]
+name = "qwen_luminal2"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["cpu"]
+cpu = []
+metal = ["dep:luminal_metal"]
+cuda = ["dep:luminal_cuda"]
+
+[dependencies]
+luminal = { path = "../.." }
+# luminal_2 = { path = "../../crates/luminal_2", default-features = false }  # Temporarily disabled for platform compatibility
+luminal_nn = { path = "../../crates/luminal_nn" }
+luminal_cpu = { path = "../../crates/luminal_cpu" }
+luminal_metal = { path = "../../crates/luminal_metal", optional = true }
+luminal_cuda = { path = "../../crates/luminal_cuda", optional = true }
+clap = { version = "4.5", features = ["derive"] }
+byteorder = "1.5.0"
+memmap2 = "0.9.4"
+colored = "2.1.0"
+itertools = "0.12.1"
+tokenizers = "0.21"
+rayon = "1.11.0"
+crossbeam = "0.8.4"
+num_cpus = "1.16.0"
+
+[[bin]]
+name = "parallel_only"
+path = "src/parallel_only.rs"
+
+[[bin]]
+name = "parallel_demo"
+path = "src/parallel_demo.rs"

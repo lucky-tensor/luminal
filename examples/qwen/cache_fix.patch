@@ -1,0 +1,74 @@
+--- a/examples/qwen/src/main.rs
++++ b/examples/qwen/src/main.rs
+@@ -376,48 +376,16 @@ fn main() {
+
+         println!("\t\t - {}ms", now.elapsed().as_millis());
+     } else {
+-        // Load from cache (for now, we still need to rebuild the graph structure)
+-        // In a full implementation, you'd deserialize the actual graph
+-        if cli_args.parallel_graph {
+-            // Use parallel graph construction even when loading from cache
+-            let (_parallel_model, weights, logits_tensor, cache_dest_vec) =
+-                build_parallel_model(&mut cx, &cli_args)
+-                    .expect("Failed to build parallel model");
+-
+-            model_weights = weights;
+-            logits = logits_tensor;
+-            cache_dest = cache_dest_vec;
+-
+-            // Create cache_src for compatibility
+-            cache_src = (0..model::NUM_LAYERS)
+-                .map(|_| {
+-                    (
+-                        cx.named_tensor("Key Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
+-                        cx.named_tensor("Value Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
+-                    )
+-                })
+-                .collect();
+-            cache_src.set_dyn(vec![], (1, model::N_KV_HEADS, 0, model::HEAD_DIM));
+-
+-            model = _parallel_model;
+-        } else {
+-            // Use traditional sequential construction
+-            cache_src = (0..model::NUM_LAYERS)
+-                .map(|_| {
+-                    (
+-                        cx.named_tensor("Key Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
+-                        cx.named_tensor("Value Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
+-                    )
+-                })
+-                .collect();
+-            cache_src.set_dyn(vec![], (1, model::N_KV_HEADS, 0, model::HEAD_DIM));
+-            model = model::Qwen::new(&mut cx);
+-            model_weights = params(&model);
+-            let (logits_tmp, cache_dest_tmp) = model.forward((input, &cache_src));
+-            logits = logits_tmp
+-                .slice((.., Expression::from('s') - 1.., ..))
+-                .retrieve();
+-            cache_dest = cache_dest_tmp;
+-        }
++        // FIXME: Currently cache loading still rebuilds the graph completely
++        // This defeats the purpose of caching and causes hangs
++        println!("WARNING: Graph cache loading is not implemented - rebuilding...");
++
++        // For now, fall back to full rebuild to avoid hang
++        // TODO: Implement proper graph deserialization
++        cache_src = (0..model::NUM_LAYERS)
++            .map(|_| {
++                (
++                    cx.named_tensor("Key Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
++                    cx.named_tensor("Value Cache", (1, N_KV_HEADS, 'p', HEAD_DIM)),
++                )
++            })
++            .collect();
++        cache_src.set_dyn(vec![], (1, model::N_KV_HEADS, 0, model::HEAD_DIM));
++        model = model::Qwen::new(&mut cx);
++        model_weights = params(&model);
++        let (logits_tmp, cache_dest_tmp) = model.forward((input, &cache_src));
++        logits = logits_tmp
++            .slice((.., Expression::from('s') - 1.., ..))
++            .retrieve();
++        cache_dest = cache_dest_tmp;
+
+         cx.keep_tensors(&model_weights);
+         cache_dest.keep();

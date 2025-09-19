@@ -1,0 +1,48 @@
+[package]
+name = "simple_parallel"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["cpu"]
+cpu = ["dep:luminal_cpu"]
+cuda = ["dep:luminal_cuda"]
+metal = ["dep:luminal_metal"]
+
+[dependencies]
+itertools = "0.14.0"
+luminal = { path = "../.." }
+luminal_nn = { path = "../../crates/luminal_nn" }
+luminal_cpu = { path = "../../crates/luminal_cpu", optional = true }
+luminal_cuda = { path = "../../crates/luminal_cuda", optional = true }
+luminal_metal = { path = "../../crates/luminal_metal", optional = true }
+rand = "0.9.1"
+rayon = "1.11.0"
+crossbeam = "0.8.4"
+num_cpus = "1.16.0"
+clap = { version = "4.5", features = ["derive"] }
+colored = "2.1.0"
+
+[[bin]]
+name = "demo"
+path = "src/demo.rs"
+
+[[bin]]
+name = "neural_demo"
+path = "src/neural_demo.rs"
+
+[[bin]]
+name = "verification"
+path = "src/verification.rs"
+
+[[bin]]
+name = "exact_replica"
+path = "src/exact_replica.rs"
+
+[[bin]]
+name = "fixed_exact"
+path = "src/fixed_exact.rs"
+
+[[bin]]
+name = "parallel_fixed"
+path = "src/parallel_fixed.rs"
